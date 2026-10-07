@@ -10,6 +10,7 @@ const db = new Database(dbPath);
 
 // Enable WAL mode for better concurrency & performance
 db.pragma('journal_mode = WAL');
+db.pragma('foreign_keys = ON');
 
 // Initialize database schema
 const initDb = () => {
@@ -33,6 +34,51 @@ const initDb = () => {
   if (!columns.includes('ngo_type')) {
     db.exec('ALTER TABLE users ADD COLUMN ngo_type TEXT');
   }
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS locations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS reports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      citizen_id INTEGER NOT NULL REFERENCES users(id),
+      location_id INTEGER NOT NULL REFERENCES locations(id),
+      location_name TEXT NOT NULL,
+      title TEXT NOT NULL,
+      category TEXT NOT NULL,
+      description TEXT NOT NULL,
+      image_path TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'accepted', 'in_progress', 'resolved')),
+      severity TEXT,
+      sentiment TEXT,
+      department TEXT,
+      priority TEXT,
+      accepted_by_ngo_id INTEGER REFERENCES users(id),
+      accepted_by_org_name TEXT,
+      accepted_at DATETIME,
+      progress_note TEXT,
+      status_updated_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_reports_citizen_id ON reports(citizen_id);
+    CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status);
+    CREATE INDEX IF NOT EXISTS idx_reports_category ON reports(category);
+
+    CREATE TABLE IF NOT EXISTS report_updates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      report_id INTEGER NOT NULL REFERENCES reports(id) ON DELETE CASCADE,
+      actor_id INTEGER NOT NULL REFERENCES users(id),
+      from_status TEXT,
+      to_status TEXT NOT NULL,
+      note TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
 };
 
 initDb();
@@ -124,4 +170,5 @@ module.exports = {
   findUserById,
   createUser,
   seedDemoAccounts,
+  db,
 };

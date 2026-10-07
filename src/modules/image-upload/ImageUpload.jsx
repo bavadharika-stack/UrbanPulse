@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Camera,
   Upload,
@@ -10,9 +10,8 @@ import {
   ArrowRight,
   MapPin,
   FileText,
-  AlignLeft,
 } from 'lucide-react';
-import { saveReport } from '../../shared/authStorage';
+import { createReport } from '../../api';
 
 export default function ImageUpload({ onBackToDashboard }) {
   const [formData, setFormData] = useState({
@@ -31,6 +30,13 @@ export default function ImageUpload({ onBackToDashboard }) {
   const [submittedReport, setSubmittedReport] = useState(null);
 
   const fileInputRef = useRef(null);
+  const imagePreviewUrlRef = useRef('');
+
+  const updateImagePreview = (url) => {
+    if (imagePreviewUrlRef.current) URL.revokeObjectURL(imagePreviewUrlRef.current);
+    imagePreviewUrlRef.current = url;
+    setImagePreviewUrl(url);
+  };
 
   // Format file size into human-readable string
   const formatFileSize = (bytes) => {
@@ -58,21 +64,32 @@ export default function ImageUpload({ onBackToDashboard }) {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validate image format
-    if (!file.type.startsWith('image/')) {
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setSelectedFile(null);
+      updateImagePreview('');
       setErrors((prev) => ({
         ...prev,
         image: 'Please select a valid image file (JPG, PNG, WebP).',
       }));
+      e.target.value = '';
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setSelectedFile(null);
+      updateImagePreview('');
+      setErrors((prev) => ({
+        ...prev,
+        image: 'Image must be 5 MB or smaller.',
+      }));
+      e.target.value = '';
       return;
     }
 
     setErrors((prev) => ({ ...prev, image: '' }));
     if (generalError) setGeneralError('');
-
     setSelectedFile(file);
     const previewUrl = URL.createObjectURL(file);
-    setImagePreviewUrl(previewUrl);
+    updateImagePreview(previewUrl);
   };
 
   // Trigger hidden file input
@@ -83,7 +100,7 @@ export default function ImageUpload({ onBackToDashboard }) {
   // Remove the selected image
   const handleRemoveImage = () => {
     setSelectedFile(null);
-    setImagePreviewUrl('');
+    updateImagePreview('');
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -124,7 +141,7 @@ export default function ImageUpload({ onBackToDashboard }) {
   };
 
   // Submit the report
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setGeneralError('');
 
@@ -133,46 +150,36 @@ export default function ImageUpload({ onBackToDashboard }) {
     }
 
     setIsSubmitting(true);
-
-    // Read image as base64 so it can be stored and shown on NGO dashboard
-    const readImageAsDataUrl = (file) =>
-      new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = (e) => resolve(e.target.result);
-        reader.onerror = () => resolve('');
-        reader.readAsDataURL(file);
-      });
-
-    readImageAsDataUrl(selectedFile).then((imageDataUrl) => {
-      saveReport({
+    try {
+      await createReport({
         title: formData.title.trim(),
         location: formData.location.trim(),
         category: formData.category,
         description: formData.description.trim(),
-        fileName: selectedFile.name,
-        imageDataUrl,
+        image: selectedFile,
       });
 
-      setTimeout(() => {
-        setIsSubmitting(false);
-        setIsSubmitted(true);
-        setSubmittedReport({
-          location: formData.location.trim(),
-          category: formData.category,
-          title: formData.title.trim(),
-          description: formData.description.trim(),
-          fileName: selectedFile.name,
-          fileSize: formatFileSize(selectedFile.size),
-          previewUrl: imagePreviewUrl,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        });
-        setIsSubmitting(false);
-      }, 400);
-    });
+      setIsSubmitted(true);
+      setSubmittedReport({
+        location: formData.location.trim(),
+        category: formData.category,
+        title: formData.title.trim(),
+        description: formData.description.trim(),
+        fileName: selectedFile.name,
+        fileSize: formatFileSize(selectedFile.size),
+        previewUrl: imagePreviewUrl,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      });
+    } catch (error) {
+      setGeneralError(error.message || 'Could not submit the report. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Reset form to submit another report
   const handleReset = () => {
+    updateImagePreview('');
     setFormData({
       location: '',
       category: '',
@@ -180,7 +187,6 @@ export default function ImageUpload({ onBackToDashboard }) {
       description: '',
     });
     setSelectedFile(null);
-    setImagePreviewUrl('');
     setErrors({});
     setGeneralError('');
     setIsSubmitted(false);
@@ -189,6 +195,10 @@ export default function ImageUpload({ onBackToDashboard }) {
       fileInputRef.current.value = '';
     }
   };
+
+  useEffect(() => () => {
+    if (imagePreviewUrlRef.current) URL.revokeObjectURL(imagePreviewUrlRef.current);
+  }, []);
 
   // ==========================================
   // Success Confirmation Screen
@@ -411,7 +421,7 @@ export default function ImageUpload({ onBackToDashboard }) {
               type="file"
               ref={fileInputRef}
               onChange={handleFileChange}
-              accept="image/*"
+              accept="image/jpeg,image/png,image/webp"
               style={{ display: 'none' }}
               id="report-image-input"
             />
@@ -436,7 +446,7 @@ export default function ImageUpload({ onBackToDashboard }) {
                   <Camera size={24} />
                 </div>
                 <div className="upload-dropzone-text">Click to select issue photo</div>
-                <div className="upload-dropzone-hint">Supports JPG, PNG, or WebP format</div>
+                <div className="upload-dropzone-hint">JPG, PNG, or WebP; maximum 5 MB</div>
                 <button
                   type="button"
                   className="btn btn-secondary btn-sm mt-2"

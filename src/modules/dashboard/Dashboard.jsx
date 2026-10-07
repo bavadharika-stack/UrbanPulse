@@ -1,37 +1,59 @@
 import React, { useState, useEffect } from 'react';
-import { User, LogOut, Camera, ArrowRight, MapPin, CheckCircle2, Clock, FileText } from 'lucide-react';
-import { getReports, getActivityStats } from '../../shared/authStorage';
+import { User, LogOut, Camera, ArrowRight, MapPin, CheckCircle2, Clock, FileText, AlertCircle } from 'lucide-react';
+import { getReports } from '../../api';
 
 export default function Dashboard({ currentUser, onLogout, onStartReport }) {
   const [reports, setReports] = useState([]);
   const [stats, setStats] = useState({ total: 0, underReview: 0, resolved: 0 });
+  const [reportsError, setReportsError] = useState('');
+  const [isLoadingReports, setIsLoadingReports] = useState(true);
 
-  // Load reports and activity statistics from demo storage
   useEffect(() => {
-    const loadedReports = getReports();
-    const loadedStats = getActivityStats();
-    setReports(loadedReports);
-    setStats(loadedStats);
+    let active = true;
+    getReports()
+      .then((loadedReports) => {
+        if (!active) return;
+        setReports(loadedReports);
+        setStats({
+          total: loadedReports.length,
+          underReview: loadedReports.filter((report) => ['accepted', 'in_progress'].includes(report.status)).length,
+          resolved: loadedReports.filter((report) => report.status === 'resolved').length,
+        });
+      })
+      .catch((error) => {
+        if (active) setReportsError(error.message);
+      })
+      .finally(() => {
+        if (active) setIsLoadingReports(false);
+      });
+    return () => { active = false; };
   }, []);
 
   // Helper to render status badge with appropriate styling
   const renderStatusBadge = (status) => {
     switch (status) {
-      case 'Resolved':
+      case 'resolved':
         return (
           <span className="status-badge status-badge-resolved">
             <CheckCircle2 size={11} style={{ marginRight: '3px' }} />
             Resolved
           </span>
         );
-      case 'Under Review':
+      case 'accepted':
         return (
           <span className="status-badge status-badge-review">
             <Clock size={11} style={{ marginRight: '3px' }} />
             Under Review
           </span>
         );
-      case 'Submitted':
+      case 'in_progress':
+        return (
+          <span className="status-badge status-badge-review">
+            <Clock size={11} style={{ marginRight: '3px' }} />
+            In Progress
+          </span>
+        );
+      case 'pending':
       default:
         return (
           <span className="status-badge status-badge-submitted">
@@ -65,6 +87,12 @@ export default function Dashboard({ currentUser, onLogout, onStartReport }) {
           <p className="card-subtitle">Overview of your public space contributions</p>
         </div>
 
+        {reportsError && (
+          <div className="alert alert-error" role="alert">
+            <AlertCircle size={18} className="alert-icon" />
+            <span>{reportsError}</span>
+          </div>
+        )}
         <div className="activity-stats-grid">
           <div className="stat-card">
             <div className="stat-number">{stats.total}</div>
@@ -127,7 +155,11 @@ export default function Dashboard({ currentUser, onLogout, onStartReport }) {
         </div>
 
         <div className="reports-list">
-          {reports.length === 0 ? (
+          {isLoadingReports ? (
+            <p style={{ fontSize: '0.875rem', color: '#64748b', textAlign: 'center', padding: '1rem' }}>
+              Loading your reports…
+            </p>
+          ) : reports.length === 0 ? (
             <p style={{ fontSize: '0.875rem', color: '#64748b', textAlign: 'center', padding: '1rem' }}>
               No reports submitted yet. Click "Report an Issue" to submit your first report.
             </p>

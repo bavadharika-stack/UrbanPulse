@@ -4,25 +4,26 @@ import {
   MapPin, Image, ClipboardCheck, Clock, PlayCircle,
   Flag, FileText,
 } from 'lucide-react';
-import {
-  setNgoAvailability,
-  getReports,
-  acceptReport,
-  updateReportStatus,
-} from '../../shared/authStorage';
+import { setNgoAvailability } from '../../shared/authStorage';
+import { acceptReport, getReports, updateReportStatus } from '../../api';
 
 // ─── Status badge ────────────────────────────────────────────────────────────
 
 const STATUS_STYLES = {
-  Submitted:       { bg: '#f0f9ff', border: '#bae6fd', color: '#0284c7' },
-  'Under Review':  { bg: '#fffbeb', border: '#fcd34d', color: '#d97706' },
-  Accepted:        { bg: '#eff6ff', border: '#93c5fd', color: '#1d4ed8' },
-  'In Progress':   { bg: '#fefce8', border: '#fde047', color: '#a16207' },
-  Resolved:        { bg: '#f0fdf4', border: '#86efac', color: '#16a34a' },
+  pending:     { bg: '#f0f9ff', border: '#bae6fd', color: '#0284c7' },
+  accepted:    { bg: '#eff6ff', border: '#93c5fd', color: '#1d4ed8' },
+  in_progress: { bg: '#fefce8', border: '#fde047', color: '#a16207' },
+  resolved:    { bg: '#f0fdf4', border: '#86efac', color: '#16a34a' },
 };
 
 function StatusBadge({ status }) {
-  const s = STATUS_STYLES[status] || STATUS_STYLES['Submitted'];
+  const labels = {
+    pending: 'Submitted',
+    accepted: 'Accepted',
+    in_progress: 'In Progress',
+    resolved: 'Resolved',
+  };
+  const s = STATUS_STYLES[status] || STATUS_STYLES.pending;
   return (
     <span style={{
       fontSize: '0.75rem', fontWeight: 600,
@@ -30,7 +31,7 @@ function StatusBadge({ status }) {
       background: s.bg, border: `1px solid ${s.border}`, color: s.color,
       whiteSpace: 'nowrap',
     }}>
-      {status}
+      {labels[status] || status}
     </span>
   );
 }
@@ -38,11 +39,11 @@ function StatusBadge({ status }) {
 // ─── Shared sub-components ───────────────────────────────────────────────────
 
 function IssueImage({ issue }) {
-  if (issue.imageDataUrl) {
+  if (issue.imageUrl) {
     return (
       <div style={{ borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-color)', maxHeight: '180px' }}>
         <img
-          src={issue.imageDataUrl}
+          src={issue.imageUrl}
           alt={`Evidence for ${issue.title}`}
           style={{ width: '100%', maxHeight: '180px', objectFit: 'cover', display: 'block' }}
         />
@@ -85,27 +86,32 @@ function ProgressPanel({ issue, ngoId, onUpdated }) {
   const [note, setNote]           = useState('');
   const [busy, setBusy]           = useState(false);
   const [noteError, setNoteError] = useState('');
+  const [actionError, setActionError] = useState('');
 
-  const isResolved   = issue.status === 'Resolved';
-  const isInProgress = issue.status === 'In Progress';
-  const isAccepted   = issue.status === 'Accepted';
+  const isResolved   = issue.status === 'resolved';
+  const isInProgress = issue.status === 'in_progress';
+  const isAccepted   = issue.status === 'accepted';
 
-  const nextStatus = isAccepted ? 'In Progress' : isInProgress ? 'Resolved' : null;
+  const nextStatus = isAccepted ? 'in_progress' : isInProgress ? 'resolved' : null;
   const btnLabel   = isAccepted ? 'Start Progress' : isInProgress ? 'Mark as Resolved' : null;
   const BtnIcon    = isAccepted ? PlayCircle : Flag;
 
-  const handleUpdate = () => {
+  const handleUpdate = async () => {
     if (note.length > 300) {
       setNoteError('Note must be 300 characters or fewer.');
       return;
     }
     setNoteError('');
+    setActionError('');
     setBusy(true);
-    const result = updateReportStatus({ reportId: issue.id, ngoId, status: nextStatus, note });
-    setBusy(false);
-    if (result) {
+    try {
+      await updateReportStatus({ reportId: issue.id, status: nextStatus, note });
       setNote('');
-      onUpdated();
+      await onUpdated();
+    } catch (error) {
+      setActionError(error.message);
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -144,6 +150,9 @@ function ProgressPanel({ issue, ngoId, onUpdated }) {
       )}
 
       {/* Status-updated-at */}
+      {actionError && (
+        <span role="alert" style={{ fontSize: '0.78rem', color: '#ef4444' }}>{actionError}</span>
+      )}
       {issue.statusUpdatedAt && !isAccepted && (
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.78rem', color: '#94a3b8' }}>
           <Clock size={12} />
@@ -213,25 +222,25 @@ export default function NgoDashboard({ currentUser, onLogout }) {
   const [availableIssues, setAvailableIssues] = useState([]);
   const [acceptedIssues,  setAcceptedIssues]  = useState([]);
   const [accepting, setAccepting] = useState(null);
+  const [issuesError, setIssuesError] = useState('');
 
   const isAvailable = availability === 'available';
 
-  const loadIssues = useCallback(() => {
-    const all     = getReports();
-    const matched = all.filter((r) => r.category && r.category === ngoType);
-
-    // Issues owned by this NGO (any status past Accepted)
-    const mine = matched.filter(
-      (r) => ['Accepted', 'In Progress', 'Resolved'].includes(r.status) && r.acceptedByNgoId === ngoId
-    );
-
-    // Open issues — unaccepted and NGO is available
-    const open = isAvailable
-      ? matched.filter((r) => !['Accepted', 'In Progress', 'Resolved'].includes(r.status))
-      : [];
-
-    setAcceptedIssues(mine);
-    setAvailableIssues(open);
+  const loadIssues = useCallback(async () => {
+    setIssuesError('');
+    try {
+      const all = await getReports();
+      const matched = all.filter((report) => report.category && report.category === ngoType);
+      const mine = matched.filter(
+        (report) => ['accepted', 'in_progress', 'resolved'].includes(report.status)
+          && String(report.acceptedByNgoId) === String(ngoId)
+      );
+      const open = isAvailable ? matched.filter((report) => report.status === 'pending') : [];
+      setAcceptedIssues(mine);
+      setAvailableIssues(open);
+    } catch (error) {
+      setIssuesError(error.message);
+    }
   }, [ngoType, ngoId, isAvailable]);
 
   useEffect(() => { loadIssues(); }, [loadIssues]);
@@ -241,14 +250,17 @@ export default function NgoDashboard({ currentUser, onLogout }) {
     setNgoAvailability(ngoId, newStatus);
   };
 
-  const handleAccept = (reportId) => {
+  const handleAccept = async (reportId) => {
     setAccepting(reportId);
-    const result = acceptReport({ reportId, ngoId, orgName });
-    if (!result) {
-      alert('This issue has already been accepted by another NGO.');
+    setIssuesError('');
+    try {
+      await acceptReport(reportId);
+      await loadIssues();
+    } catch (error) {
+      setIssuesError(error.message);
+    } finally {
+      setAccepting(null);
     }
-    loadIssues();
-    setAccepting(null);
   };
 
   // ── render ──────────────────────────────────────────────────────────────────
@@ -274,6 +286,12 @@ export default function NgoDashboard({ currentUser, onLogout }) {
           <h3 className="card-title" style={{ fontSize: '1.1rem' }}>Availability</h3>
           <p className="card-subtitle">Set whether your organisation is currently accepting issues</p>
         </div>
+
+        {issuesError && (
+          <div className="alert alert-error" role="alert">
+            <span>{issuesError}</span>
+          </div>
+        )}
 
         <div style={{
           display: 'flex', alignItems: 'center', gap: '0.5rem',

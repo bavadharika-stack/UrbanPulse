@@ -1,39 +1,20 @@
 const API_TOKEN_KEY = 'urbanpulse_access_token';
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+const LEGACY_STORAGE_KEYS = [
+  'urbanpulse_registered_users',
+  'urbanpulse_current_user',
+  'urbanpulse_citizen_reports',
+  'urbanpulse_ngo_availability',
+];
 
-const legacyDemoData = (() => {
-  const data = { reports: null, ngoAvailability: {} };
-  const legacyKeys = [
-    'urbanpulse_registered_users',
-    'urbanpulse_current_user',
-    'urbanpulse_citizen_reports',
-    'urbanpulse_ngo_availability',
-  ];
-
+const clearLegacyStorage = () => {
   try {
-    const savedReports = localStorage.getItem('urbanpulse_citizen_reports');
-    if (savedReports) {
-      const parsedReports = JSON.parse(savedReports);
-      if (Array.isArray(parsedReports)) data.reports = parsedReports;
-    }
-
-    const savedAvailability = localStorage.getItem('urbanpulse_ngo_availability');
-    if (savedAvailability) {
-      const parsedAvailability = JSON.parse(savedAvailability);
-      if (parsedAvailability && typeof parsedAvailability === 'object' && !Array.isArray(parsedAvailability)) {
-        data.ngoAvailability = parsedAvailability;
-      }
-    }
-
-    legacyKeys.forEach((key) => localStorage.removeItem(key));
+    LEGACY_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
   } catch (error) {
-    console.error('Could not migrate legacy browser data:', error);
+    console.error('Could not clear legacy browser storage:', error);
   }
-
-  return data;
-})();
-
-export const getLegacyDemoData = () => legacyDemoData;
+};
+clearLegacyStorage();
 
 export class ApiError extends Error {
   constructor(message, status) {
@@ -45,7 +26,7 @@ export class ApiError extends Error {
 
 const request = async (path, options = {}) => {
   const headers = new Headers(options.headers || {});
-  if (options.body && !headers.has('Content-Type')) {
+  if (options.body && !(options.body instanceof FormData) && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
 
@@ -99,4 +80,53 @@ export const getCurrentUser = async () => {
 
 export const logoutUser = () => {
   localStorage.removeItem(API_TOKEN_KEY);
+};
+
+export const createReport = async ({ location, title, category, description, image }) => {
+  const body = new FormData();
+  body.append('location', location);
+  body.append('title', title);
+  body.append('category', category);
+  body.append('description', description);
+  body.append('image', image);
+  return request('/reports', { method: 'POST', body });
+};
+
+const normalizeImageUrl = (imageUrl) => {
+  if (!imageUrl) return '';
+  if (/^https?:\/\//i.test(imageUrl)) return imageUrl;
+  const apiOrigin = /^https?:\/\//i.test(API_BASE_URL)
+    ? new URL(API_BASE_URL).origin
+    : window.location.origin;
+  return new URL(imageUrl, apiOrigin).toString();
+};
+
+const normalizeReport = (report) => ({
+  ...report,
+  imageUrl: normalizeImageUrl(report.imageUrl),
+});
+
+export const getReports = async () => {
+  const result = await request('/reports');
+  return result.reports.map(normalizeReport);
+};
+
+export const getReport = async (reportId) => {
+  const result = await request(`/reports/${encodeURIComponent(reportId)}`);
+  return normalizeReport(result.report);
+};
+
+export const acceptReport = async (reportId) => {
+  const result = await request(`/reports/${encodeURIComponent(reportId)}/accept`, {
+    method: 'POST',
+  });
+  return normalizeReport(result.report);
+};
+
+export const updateReportStatus = async ({ reportId, status, note }) => {
+  const result = await request(`/reports/${encodeURIComponent(reportId)}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status, note }),
+  });
+  return normalizeReport(result.report);
 };
