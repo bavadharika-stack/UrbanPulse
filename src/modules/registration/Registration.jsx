@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { User, Building2, Mail, Lock, Eye, EyeOff, Tag, CheckCircle2, AlertCircle, ArrowRight } from 'lucide-react';
-import { saveUser } from '../../shared/authStorage';
+import { registerAccount } from '../../api';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -90,7 +90,7 @@ export default function Registration({ onNavigateToLogin }) {
     }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setServerError('');
 
@@ -119,28 +119,22 @@ export default function Registration({ onNavigateToLogin }) {
     if (hasErrors) return;
 
     setIsLoading(true);
-
-    // Save to local storage demo
-    setTimeout(() => {
-      const result = saveUser({
-        fullName: formData.fullName,
-        organizationName: formData.organizationName,
+    try {
+      const result = await registerAccount({
+        role: accountType,
+        fullName: accountType === 'citizen' ? formData.fullName : undefined,
+        organizationName: accountType === 'ngo' ? formData.organizationName : undefined,
         email: formData.email,
         password: formData.password,
-        role: accountType,
-        ngoType: formData.ngoType,
+        ngoType: accountType === 'ngo' ? formData.ngoType : undefined,
       });
-
-      if (!result.success) {
-        setServerError(result.message);
-        setIsLoading(false);
-        return;
-      }
-
       setIsSuccess(true);
       setRegisteredUser(result.user);
+    } catch (error) {
+      setServerError(error.message || 'Registration failed. Please try again.');
+    } finally {
       setIsLoading(false);
-    }, 300);
+    }
   };
 
   const handleReset = () => {

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Mail, Lock, Eye, EyeOff, AlertCircle, ArrowRight } from 'lucide-react';
-import { authenticateUser } from '../../shared/authStorage';
+import { loginAccount } from '../../api';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -42,7 +42,7 @@ export default function Login({ initialEmail = '', onLoginSuccess, onNavigateToR
     setErrors((prev) => ({ ...prev, [name]: error }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setAuthError('');
 
@@ -57,20 +57,17 @@ export default function Login({ initialEmail = '', onLoginSuccess, onNavigateToR
     if (hasErrors) return;
 
     setIsLoading(true);
-
-    // Authenticate with local storage demo
-    setTimeout(() => {
-      const result = authenticateUser(formData.email, formData.password);
-
-      if (!result.success) {
-        setAuthError(result.message || 'Invalid email or password.');
-        setIsLoading(false);
-        return;
-      }
-
-      setIsLoading(false);
+    try {
+      const result = await loginAccount({
+        email: formData.email,
+        password: formData.password,
+      });
       onLoginSuccess?.(result.user);
-    }, 300);
+    } catch (error) {
+      setAuthError(error.message || 'Invalid email or password.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -172,7 +169,7 @@ export default function Login({ initialEmail = '', onLoginSuccess, onNavigateToR
 
           {/* Quick Demo Credentials Tip */}
           <div className="demo-credentials-card">
-            <strong>Demo account:</strong> <code>demo@urbanpulse.com</code> / <code>Password123</code>
+            <strong>Demo account:</strong> <code>demo@urbanpulse.com</code> / <code>Set in .env</code>
           </div>
 
           {/* Link to Register */}

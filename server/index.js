@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const config = require('./config');
+const userRepository = require('./db');
 const authRoutes = require('./routes/authRoutes');
 
 const app = express();
@@ -22,7 +23,14 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Start Server
-app.listen(config.port, () => {
-  console.log(`[UrbanPulse Server] Running on http://localhost:${config.port}`);
+const startServer = async () => {
+  await userRepository.seedDemoAccounts();
+  app.listen(config.port, () => {
+    console.log(`[UrbanPulse Server] Running on http://localhost:${config.port}`);
+  });
+};
+
+startServer().catch((error) => {
+  console.error('Failed to start UrbanPulse API:', error);
+  process.exitCode = 1;
 });

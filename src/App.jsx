@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { AlertCircle } from 'lucide-react';
 import Header from './shared/Header';
 import Footer from './shared/Footer';
 import Registration from './modules/registration/Registration';
@@ -6,20 +7,32 @@ import Login from './modules/login/Login';
 import Dashboard from './modules/dashboard/Dashboard';
 import NgoDashboard from './modules/dashboard/NgoDashboard';
 import ImageUpload from './modules/image-upload/ImageUpload';
-import { getCurrentUser, logoutUser } from './shared/authStorage';
+import { getCurrentUser, logoutUser } from './api';
 
 export default function App() {
-  const [currentView, setCurrentView] = useState('login'); // 'login' | 'register' | 'dashboard' | 'ngo-dashboard' | 'image-upload'
+  const [currentView, setCurrentView] = useState('login');
   const [currentUser, setCurrentUser] = useState(null);
   const [prefilledEmail, setPrefilledEmail] = useState('');
+  const [sessionError, setSessionError] = useState('');
 
-  // Check if a user session is already saved in localStorage
+  const getHomeView = (user) => {
+    if (user?.role === 'ngo') return 'ngo-dashboard';
+    if (user?.role === 'authority') return 'authority-dashboard';
+    return 'dashboard';
+  };
+
   useEffect(() => {
-    const savedUser = getCurrentUser();
-    if (savedUser) {
-      setCurrentUser(savedUser);
-      setCurrentView(savedUser.role === 'ngo' ? 'ngo-dashboard' : 'dashboard');
-    }
+    let active = true;
+    getCurrentUser()
+      .then((user) => {
+        if (!active || !user) return;
+        setCurrentUser(user);
+        setCurrentView(getHomeView(user));
+      })
+      .catch((error) => {
+        if (active) setSessionError(error.message);
+      });
+    return () => { active = false; };
   }, []);
 
   const handleNavigateToLogin = (email = '') => {
@@ -35,18 +48,31 @@ export default function App() {
 
   const handleLoginSuccess = (user) => {
     setCurrentUser(user);
-    setCurrentView(user?.role === 'ngo' ? 'ngo-dashboard' : 'dashboard');
+    setCurrentView(getHomeView(user));
   };
 
   const handleLogout = () => {
     logoutUser();
     setCurrentUser(null);
+    setSessionError('');
     setCurrentView('login');
   };
 
   const handleNavClick = (view) => {
     if ((view === 'dashboard' || view === 'image-upload') && !currentUser) {
       setCurrentView('login');
+      return;
+    }
+    if (currentUser?.role === 'authority' && (view === 'dashboard' || view === 'image-upload')) {
+      setCurrentView('authority-dashboard');
+      return;
+    }
+    if (currentUser?.role === 'ngo' && view === 'dashboard') {
+      setCurrentView('ngo-dashboard');
+      return;
+    }
+    if (view === 'image-upload' && currentUser?.role !== 'citizen') {
+      setCurrentView(getHomeView(currentUser));
       return;
     }
     setCurrentView(view);
@@ -64,38 +90,63 @@ export default function App() {
 
       {/* Main Page Body */}
       <main className="main-wrapper">
-        {currentView === 'register' && (
-          <Registration onNavigateToLogin={handleNavigateToLogin} />
-        )}
+        <div style={{ width: '100%' }}>
+          {sessionError && (
+            <div className="alert alert-error" role="alert">
+              <AlertCircle size={18} className="alert-icon" />
+              <span>{sessionError}</span>
+            </div>
+          )}
 
-        {currentView === 'login' && (
-          <Login
-            initialEmail={prefilledEmail}
-            onLoginSuccess={handleLoginSuccess}
-            onNavigateToRegister={handleNavigateToRegister}
-          />
-        )}
+          {currentView === 'register' && (
+            <Registration onNavigateToLogin={handleNavigateToLogin} />
+          )}
 
-        {currentView === 'ngo-dashboard' && (
-          <NgoDashboard
-            currentUser={currentUser}
-            onLogout={handleLogout}
-          />
-        )}
+          {currentView === 'login' && (
+            <Login
+              initialEmail={prefilledEmail}
+              onLoginSuccess={handleLoginSuccess}
+              onNavigateToRegister={handleNavigateToRegister}
+            />
+          )}
 
-        {currentView === 'dashboard' && (
-          <Dashboard
-            currentUser={currentUser}
-            onLogout={handleLogout}
-            onStartReport={() => setCurrentView('image-upload')}
-          />
-        )}
+          {currentView === 'ngo-dashboard' && (
+            <NgoDashboard
+              currentUser={currentUser}
+              onLogout={handleLogout}
+            />
+          )}
 
-        {currentView === 'image-upload' && (
-          <ImageUpload
-            onBackToDashboard={() => setCurrentView('dashboard')}
-          />
-        )}
+          {currentView === 'authority-dashboard' && (
+            <div className="auth-page-container">
+              <div className="card">
+                <div className="card-header">
+                  <h2 className="card-title">Authority account signed in</h2>
+                  <p className="card-subtitle">
+                    The authority dashboard will be added in a later development phase.
+                  </p>
+                </div>
+                <button type="button" className="btn btn-secondary" onClick={handleLogout}>
+                  Sign Out
+                </button>
+              </div>
+            </div>
+          )}
+
+          {currentView === 'dashboard' && (
+            <Dashboard
+              currentUser={currentUser}
+              onLogout={handleLogout}
+              onStartReport={() => setCurrentView('image-upload')}
+            />
+          )}
+
+          {currentView === 'image-upload' && (
+            <ImageUpload
+              onBackToDashboard={() => setCurrentView('dashboard')}
+            />
+          )}
+        </div>
       </main>
 
       {/* Footer */}

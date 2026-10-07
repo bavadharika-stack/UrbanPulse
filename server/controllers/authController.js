@@ -1,59 +1,69 @@
 const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const { z } = require('zod');
+const config = require('../config');
 const userRepository = require('../db');
 
-// Basic email validation regex
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const registrationSchema = z.object({
+  role: z.enum(['citizen', 'ngo']).default('citizen'),
+  fullName: z.string().trim().min(2).max(120).optional(),
+  organizationName: z.string().trim().min(2).max(160).optional(),
+  email: z.string().trim().email().max(254),
+  password: z.string().min(6).max(128),
+  ngoType: z.string().trim().max(100).optional(),
+}).superRefine((data, context) => {
+  if (data.role === 'citizen' && !data.fullName) {
+    context.addIssue({
+      code: 'custom',
+      path: ['fullName'],
+      message: 'Full name is required for citizen accounts.',
+    });
+  }
+  if (data.role === 'ngo') {
+    if (!data.organizationName) {
+      context.addIssue({
+        code: 'custom',
+        path: ['organizationName'],
+        message: 'Organization name is required for NGO accounts.',
+      });
+    }
+    if (!data.ngoType) {
+      context.addIssue({
+        code: 'custom',
+        path: ['ngoType'],
+        message: 'NGO type is required for NGO accounts.',
+      });
+    }
+  }
+});
 
-/**
- * Citizen Registration Controller (US-01)
- */
+const loginSchema = z.object({
+  email: z.string().trim().email().max(254),
+  password: z.string().min(1).max(128),
+});
+
+const validationMessage = (error) =>
+  error.issues.map((issue) => issue.message).join(' ');
+
+const createToken = (user) => jwt.sign(
+  { sub: String(user.id), role: user.role },
+  config.jwtSecret,
+  { expiresIn: '8h' },
+);
+
 exports.register = async (req, res) => {
+  const parsed = registrationSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      success: false,
+      message: validationMessage(parsed.error),
+    });
+  }
+
+  const data = parsed.data;
+  const email = data.email.toLowerCase();
   try {
-    const { fullName, email, password } = req.body;
-
-    // 1. Required-field validation
-    if (!fullName || typeof fullName !== 'string' || !fullName.trim()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Full name is required.',
-      });
-    }
-
-    if (!email || typeof email !== 'string' || !email.trim()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Email address is required.',
-      });
-    }
-
-    if (!password || typeof password !== 'string') {
-      return res.status(400).json({
-        success: false,
-        message: 'Password is required.',
-      });
-    }
-
-    const trimmedName = fullName.trim();
-    const trimmedEmail = email.trim().toLowerCase();
-
-    // 2. Email format validation
-    if (!EMAIL_REGEX.test(trimmedEmail)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide a valid email address.',
-      });
-    }
-
-    // 3. Password validation
-    if (password.length < 6) {
-      return res.status(400).json({
-        success: false,
-        message: 'Password must be at least 6 characters long.',
-      });
-    }
-
-    // 4. Duplicate account check
-    const existingUser = await userRepository.findUserByEmail(trimmedEmail);
+    const existingUser = await userRepository.findUserByEmail(email);
     if (existingUser) {
       return res.status(409).json({
         success: false,
@@ -61,21 +71,20 @@ exports.register = async (req, res) => {
       });
     }
 
-    // 5. Secure password hashing (Salt rounds: 10)
-    const salt = await bcrypt.genSalt(10);
-    const passwordHash = await bcrypt.hash(password, salt);
-
-    // 6. Save new citizen user to SQLite
-    const newUser = await userRepository.createCitizenUser({
-      fullName: trimmedName,
-      email: trimmedEmail,
+    const passwordHash = await bcrypt.hash(data.password, 10);
+    const user = await userRepository.createUser({
+      fullName: data.role === 'ngo' ? data.organizationName : data.fullName,
+      organizationName: data.role === 'ngo' ? data.organizationName : '',
+      email,
       passwordHash,
+      role: data.role,
+      ngoType: data.role === 'ngo' ? data.ngoType : '',
     });
 
     return res.status(201).json({
       success: true,
-      message: 'Citizen registration successful! You can now proceed to login.',
-      user: newUser,
+      message: 'Registration successful! You can now proceed to login.',
+      user,
     });
   } catch (error) {
     console.error('Registration Error:', error);
@@ -85,3 +94,46 @@ exports.register = async (req, res) => {
     });
   }
 };
+
+exports.login = async (req, res) => {
+  const parsed = loginSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      success: false,
+      message: validationMessage(parsed.error),
+    });
+  }
+
+  try {
+    const userRecord = await userRepository.findUserByEmail(parsed.data.email.toLowerCase());
+    const passwordMatches = userRecord
+      ? await bcrypt.compare(parsed.data.password, userRecord.password_hash)
+      : false;
+
+    if (!passwordMatches) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid email or password.',
+      });
+    }
+
+    const user = await userRepository.findUserById(userRecord.id);
+    return res.json({
+      success: true,
+      message: 'Login successful.',
+      token: createToken(user),
+      user,
+    });
+  } catch (error) {
+    console.error('Login Error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error while processing login. Please try again.',
+    });
+  }
+};
+
+exports.me = (req, res) => res.json({
+  success: true,
+  user: req.user,
+});
