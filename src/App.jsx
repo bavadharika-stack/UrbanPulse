@@ -6,6 +6,7 @@ import Registration from './modules/registration/Registration';
 import Login from './modules/login/Login';
 import Dashboard from './modules/dashboard/Dashboard';
 import NgoDashboard from './modules/dashboard/NgoDashboard';
+import AuthorityDashboard from './modules/dashboard/AuthorityDashboard';
 import ImageUpload from './modules/image-upload/ImageUpload';
 import { getCurrentUser, logoutUser } from './api';
 
@@ -118,19 +119,7 @@ export default function App() {
           )}
 
           {currentView === 'authority-dashboard' && (
-            <div className="auth-page-container">
-              <div className="card">
-                <div className="card-header">
-                  <h2 className="card-title">Authority account signed in</h2>
-                  <p className="card-subtitle">
-                    The authority dashboard will be added in a later development phase.
-                  </p>
-                </div>
-                <button type="button" className="btn btn-secondary" onClick={handleLogout}>
-                  Sign Out
-                </button>
-              </div>
-            </div>
+            <AuthorityDashboard currentUser={currentUser} onLogout={handleLogout} />
           )}
 
           {currentView === 'dashboard' && (

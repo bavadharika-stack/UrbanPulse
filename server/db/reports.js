@@ -1,4 +1,5 @@
 const { db } = require('./index');
+const { calculatePriority, getDepartment } = require('../services/reportRules');
 
 const reportSelect = `
   SELECT
@@ -14,6 +15,9 @@ const reportSelect = `
     reports.sentiment,
     reports.department,
     reports.priority,
+    reports.verified,
+    reports.verified_by_ngo_id AS verifiedByNgoId,
+    reports.verified_at AS verifiedAt,
     reports.accepted_by_ngo_id AS acceptedByNgoId,
     reports.accepted_by_org_name AS acceptedByOrgName,
     reports.accepted_at AS acceptedAt,
@@ -58,8 +62,8 @@ const seedDemoReports = async (citizenId) => {
     `);
     const insertReport = db.prepare(`
       INSERT INTO reports
-        (citizen_id, location_id, location_name, title, category, description, image_path, status)
-      VALUES (?, ?, ?, ?, ?, ?, '', ?)
+        (citizen_id, location_id, location_name, title, category, description, image_path, status, severity, department, priority)
+      VALUES (?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?)
     `);
     const insertUpdate = db.prepare(`
       INSERT INTO report_updates (report_id, actor_id, from_status, to_status, note)
@@ -68,6 +72,11 @@ const seedDemoReports = async (citizenId) => {
 
     for (const sample of samples) {
       const location = insertLocation.get(sample.location);
+      const { severity, priority } = calculatePriority({
+        category: sample.category,
+        sameLocationCount: db.prepare('SELECT COUNT(*) AS count FROM reports WHERE location_id = ?').get(location.id).count,
+        description: sample.description,
+      });
       const report = insertReport.run(
         citizenId,
         location.id,
@@ -76,26 +85,73 @@ const seedDemoReports = async (citizenId) => {
         sample.category,
         sample.description,
         sample.status,
+        severity,
+        getDepartment(sample.category),
+        priority,
       );
       insertUpdate.run(report.lastInsertRowid, citizenId, sample.status);
     }
   });
   seed();
+
+  const existing = db.prepare(`
+    SELECT id, category, location_id, description, verified
+    FROM reports
+  `).all();
+  const updateClassification = db.prepare(`
+    UPDATE reports SET severity = ?, department = ?, priority = ? WHERE id = ?
+  `);
+  const backfill = db.transaction(() => {
+    for (const report of existing) {
+      const sameLocationCount = db.prepare(`
+        SELECT COUNT(*) AS count FROM reports WHERE location_id = ?
+      `).get(report.location_id).count;
+      const { severity, priority } = calculatePriority({
+        category: report.category,
+        sameLocationCount,
+        description: report.description,
+        verified: Boolean(report.verified),
+      });
+      updateClassification.run(severity, getDepartment(report.category), priority, report.id);
+    }
+  });
+  backfill();
 };
 
 const createReport = async ({ citizenId, location, title, category, description, imagePath }) => {
   const save = db.transaction(() => {
-    const locationRow = db.prepare(`
-      INSERT INTO locations (name) VALUES (?)
-      ON CONFLICT(name) DO UPDATE SET name = excluded.name
-      RETURNING id
-    `).get(location);
+    let locationRow = db.prepare('SELECT id FROM locations WHERE name = ? COLLATE NOCASE').get(location);
+    if (!locationRow) {
+      const inserted = db.prepare('INSERT INTO locations (name) VALUES (?)').run(location);
+      locationRow = { id: inserted.lastInsertRowid };
+    }
+
+    const sameLocationCount = db.prepare(`
+      SELECT COUNT(*) AS count FROM reports WHERE location_id = ?
+    `).get(locationRow.id).count;
+    const { severity, priority } = calculatePriority({
+      category,
+      sameLocationCount,
+      description,
+    });
 
     const result = db.prepare(`
       INSERT INTO reports
-        (citizen_id, location_id, location_name, title, category, description, image_path)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(citizenId, locationRow.id, location, title, category, description, imagePath);
+        (citizen_id, location_id, location_name, title, category, description, image_path,
+         severity, department, priority)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      citizenId,
+      locationRow.id,
+      location,
+      title,
+      category,
+      description,
+      imagePath,
+      severity,
+      getDepartment(category),
+      priority,
+    );
 
     db.prepare(`
       INSERT INTO report_updates (report_id, actor_id, from_status, to_status, note)
@@ -133,10 +189,18 @@ const getReportById = async ({ id, userId, role }) => {
   };
 };
 
-const acceptReport = async ({ id, ngoId, organizationName }) => {
+const acceptReport = async ({ id, ngoId, organizationName, ngoType }) => {
   const update = db.transaction(() => {
     const report = db.prepare(`${reportSelect} WHERE reports.id = ?`).get(id);
-    if (!report || report.status !== 'pending') return null;
+    const availability = db.prepare(`
+      SELECT status FROM ngo_availability WHERE ngo_id = ?
+    `).get(ngoId)?.status || 'available';
+    if (
+      !report
+      || report.status !== 'pending'
+      || report.category !== ngoType
+      || availability !== 'available'
+    ) return null;
     db.prepare(`
       UPDATE reports
       SET status = 'accepted', accepted_by_ngo_id = ?, accepted_by_org_name = ?,
@@ -176,11 +240,46 @@ const updateReportStatus = async ({ id, ngoId, status, note }) => {
   return getReportById({ id, role: 'authority' });
 };
 
+const verifyReport = async ({ id, ngoId, ngoType }) => {
+  const update = db.transaction(() => {
+    const report = db.prepare(`
+      SELECT id, category, location_id, description, verified
+      FROM reports WHERE id = ?
+    `).get(id);
+    if (!report || report.verified) return null;
+    if (ngoType && report.category !== ngoType) return null;
+
+    const sameLocationCount = db.prepare(`
+      SELECT COUNT(*) AS count FROM reports WHERE location_id = ?
+    `).get(report.location_id).count;
+    const { priority } = calculatePriority({
+      category: report.category,
+      sameLocationCount,
+      description: report.description,
+      verified: true,
+    });
+    db.prepare(`
+      UPDATE reports
+      SET verified = 1, verified_by_ngo_id = ?, verified_at = CURRENT_TIMESTAMP, priority = ?
+      WHERE id = ? AND verified = 0
+    `).run(ngoId, priority, id);
+    db.prepare(`
+      INSERT INTO report_updates (report_id, actor_id, from_status, to_status, note)
+      VALUES (?, ?, (SELECT status FROM reports WHERE id = ?),
+        (SELECT status FROM reports WHERE id = ?), 'Report verified by NGO')
+    `).run(id, ngoId, id, id);
+    return true;
+  });
+  if (!update()) return null;
+  return getReportById({ id, role: 'authority' });
+};
+
 module.exports = {
   createReport,
   getReports,
   getReportById,
   acceptReport,
   updateReportStatus,
+  verifyReport,
   seedDemoReports,
 };

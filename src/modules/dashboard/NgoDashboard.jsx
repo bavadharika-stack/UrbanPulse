@@ -4,8 +4,14 @@ import {
   MapPin, Image, ClipboardCheck, Clock, PlayCircle,
   Flag, FileText,
 } from 'lucide-react';
-import { setNgoAvailability } from '../../shared/authStorage';
-import { acceptReport, getReports, updateReportStatus } from '../../api';
+import {
+  acceptReport,
+  getReports,
+  getNgoAvailability,
+  setNgoAvailability,
+  updateReportStatus,
+  verifyReport,
+} from '../../api';
 
 // ─── Status badge ────────────────────────────────────────────────────────────
 
@@ -222,7 +228,9 @@ export default function NgoDashboard({ currentUser, onLogout }) {
   const [availableIssues, setAvailableIssues] = useState([]);
   const [acceptedIssues,  setAcceptedIssues]  = useState([]);
   const [accepting, setAccepting] = useState(null);
+  const [verifying, setVerifying] = useState(null);
   const [issuesError, setIssuesError] = useState('');
+  const [availabilityBusy, setAvailabilityBusy] = useState(false);
 
   const isAvailable = availability === 'available';
 
@@ -245,9 +253,29 @@ export default function NgoDashboard({ currentUser, onLogout }) {
 
   useEffect(() => { loadIssues(); }, [loadIssues]);
 
-  const handleToggle = (newStatus) => {
-    setAvailability(newStatus);
-    setNgoAvailability(ngoId, newStatus);
+  useEffect(() => {
+    let active = true;
+    getNgoAvailability()
+      .then((status) => {
+        if (active) setAvailability(status);
+      })
+      .catch((error) => {
+        if (active) setIssuesError(error.message);
+      });
+    return () => { active = false; };
+  }, []);
+
+  const handleToggle = async (newStatus) => {
+    setAvailabilityBusy(true);
+    setIssuesError('');
+    try {
+      const savedStatus = await setNgoAvailability(newStatus);
+      setAvailability(savedStatus);
+    } catch (error) {
+      setIssuesError(error.message);
+    } finally {
+      setAvailabilityBusy(false);
+    }
   };
 
   const handleAccept = async (reportId) => {
@@ -260,6 +288,19 @@ export default function NgoDashboard({ currentUser, onLogout }) {
       setIssuesError(error.message);
     } finally {
       setAccepting(null);
+    }
+  };
+
+  const handleVerify = async (reportId) => {
+    setVerifying(reportId);
+    setIssuesError('');
+    try {
+      await verifyReport(reportId);
+      await loadIssues();
+    } catch (error) {
+      setIssuesError(error.message);
+    } finally {
+      setVerifying(null);
     }
   };
 
@@ -310,11 +351,13 @@ export default function NgoDashboard({ currentUser, onLogout }) {
         <div className="account-type-grid">
           <button type="button" id="btn-ngo-available"
             className={`account-type-btn${isAvailable ? ' active' : ''}`}
+            disabled={availabilityBusy}
             onClick={() => handleToggle('available')}>
             <CheckCircle2 size={18} /><span>Available</span>
           </button>
           <button type="button" id="btn-ngo-unavailable"
             className={`account-type-btn${!isAvailable ? ' active' : ''}`}
+            disabled={availabilityBusy}
             onClick={() => handleToggle('unavailable')}>
             <Circle size={18} /><span>Unavailable</span>
           </button>
@@ -348,6 +391,18 @@ export default function NgoDashboard({ currentUser, onLogout }) {
                   <StatusBadge status={issue.status} />
                 </div>
                 <IssueMeta issue={issue} />
+                {issue.verified ? (
+                  <span className="status-badge status-badge-resolved">Verified</span>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    disabled={verifying === issue.id}
+                    onClick={() => handleVerify(issue.id)}
+                  >
+                    {verifying === issue.id ? 'Verifying…' : 'Verify Issue'}
+                  </button>
+                )}
                 <p style={{ margin: 0, fontSize: '0.8125rem', color: '#475569', lineHeight: 1.5 }}>
                   {issue.description}
                 </p>

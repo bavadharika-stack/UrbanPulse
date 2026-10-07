@@ -78,7 +78,25 @@ const initDb = () => {
       note TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS ngo_availability (
+      ngo_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      status TEXT NOT NULL DEFAULT 'available'
+        CHECK (status IN ('available', 'unavailable')),
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `);
+
+  const reportColumns = db.prepare('PRAGMA table_info(reports)').all().map((column) => column.name);
+  if (!reportColumns.includes('verified')) {
+    db.exec('ALTER TABLE reports ADD COLUMN verified INTEGER NOT NULL DEFAULT 0');
+  }
+  if (!reportColumns.includes('verified_by_ngo_id')) {
+    db.exec('ALTER TABLE reports ADD COLUMN verified_by_ngo_id INTEGER REFERENCES users(id)');
+  }
+  if (!reportColumns.includes('verified_at')) {
+    db.exec('ALTER TABLE reports ADD COLUMN verified_at DATETIME');
+  }
 };
 
 initDb();
@@ -92,21 +110,27 @@ const toPublicUser = (row) => {
     email: row.email,
     role: row.role,
     ngoType: row.ngo_type || '',
-    availability: row.role === 'ngo' ? 'available' : undefined,
+    availability: row.role === 'ngo' ? (row.availability || 'available') : undefined,
     createdAt: row.created_at,
   };
 };
 
 const findUserByEmail = async (email) =>
   db.prepare(`
-    SELECT id, full_name, organization_name, email, password_hash, role, ngo_type, created_at
-    FROM users WHERE email = ?
+    SELECT users.id, users.full_name, users.organization_name, users.email, users.password_hash,
+      users.role, users.ngo_type, users.created_at, ngo_availability.status AS availability
+    FROM users
+    LEFT JOIN ngo_availability ON ngo_availability.ngo_id = users.id
+    WHERE users.email = ?
   `).get(email) || null;
 
 const findUserById = async (id) => {
   const row = db.prepare(`
-    SELECT id, full_name, organization_name, email, role, ngo_type, created_at
-    FROM users WHERE id = ?
+    SELECT users.id, users.full_name, users.organization_name, users.email, users.role,
+      users.ngo_type, users.created_at, ngo_availability.status AS availability
+    FROM users
+    LEFT JOIN ngo_availability ON ngo_availability.ngo_id = users.id
+    WHERE users.id = ?
   `).get(id);
   return toPublicUser(row);
 };
@@ -149,9 +173,14 @@ const seedDemoAccounts = async () => {
     VALUES
       (@fullName, @organizationName, @email, @passwordHash, @role, @ngoType)
   `);
+  const setInitialAvailability = db.prepare(`
+    INSERT OR IGNORE INTO ngo_availability (ngo_id, status)
+    SELECT id, 'available' FROM users WHERE email = ?
+  `);
 
   const insertDemoAccounts = db.transaction((accounts) => {
     for (const account of accounts) insertIfMissing.run(account);
+    setInitialAvailability.run('ngo@urbanpulse.com');
   });
 
   const accountsWithHashes = await Promise.all(demoAccounts.map(async (account) => ({
@@ -165,10 +194,24 @@ const seedDemoAccounts = async () => {
   insertDemoAccounts(accountsWithHashes);
 };
 
+const getNgoAvailability = async (ngoId) =>
+  db.prepare('SELECT status FROM ngo_availability WHERE ngo_id = ?').get(ngoId)?.status || 'available';
+
+const setNgoAvailability = async ({ ngoId, status }) => {
+  db.prepare(`
+    INSERT INTO ngo_availability (ngo_id, status, updated_at)
+    VALUES (?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(ngo_id) DO UPDATE SET status = excluded.status, updated_at = CURRENT_TIMESTAMP
+  `).run(ngoId, status);
+  return getNgoAvailability(ngoId);
+};
+
 module.exports = {
   findUserByEmail,
   findUserById,
   createUser,
   seedDemoAccounts,
+  getNgoAvailability,
+  setNgoAvailability,
   db,
 };

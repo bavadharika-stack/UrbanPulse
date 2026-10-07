@@ -103,6 +103,7 @@ exports.accept = async (req, res, next) => {
       id: parsedId.data,
       ngoId: req.user.id,
       organizationName: req.user.organizationName || req.user.fullName,
+      ngoType: req.user.ngoType,
     });
     if (!report) {
       return res.status(409).json({
@@ -137,6 +138,30 @@ exports.updateStatus = async (req, res, next) => {
       return res.status(409).json({
         success: false,
         message: 'Only the accepting NGO can advance a report through its allowed statuses.',
+      });
+    }
+    return res.json({ success: true, report });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+exports.verify = async (req, res, next) => {
+  const parsedId = reportIdSchema.safeParse(req.params.id);
+  if (!parsedId.success) {
+    return res.status(400).json({ success: false, message: 'Report ID must be a positive integer.' });
+  }
+
+  try {
+    const report = await reportsRepository.verifyReport({
+      id: parsedId.data,
+      ngoId: req.user.id,
+      ngoType: req.user.ngoType,
+    });
+    if (!report) {
+      return res.status(409).json({
+        success: false,
+        message: 'This report is already verified, does not exist, or is outside your NGO category.',
       });
     }
     return res.json({ success: true, report });

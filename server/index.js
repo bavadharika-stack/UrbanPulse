@@ -5,6 +5,7 @@ const userRepository = require('./db');
 const reportsRepository = require('./db/reports');
 const authRoutes = require('./routes/authRoutes');
 const reportRoutes = require('./routes/reportRoutes');
+const ngoRoutes = require('./routes/ngoRoutes');
 const { uploadDirectory } = require('./middleware/reportUpload');
 
 const app = express();
@@ -23,6 +24,7 @@ app.use('/uploads', express.static(uploadDirectory, {
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/ngo', ngoRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

@@ -14,6 +14,7 @@ router.post(
 );
 router.get('/', authorizeRoles('citizen', 'ngo', 'authority'), reportController.list);
 router.get('/:id', authorizeRoles('citizen', 'ngo', 'authority'), reportController.getById);
+router.patch('/:id/verify', authorizeRoles('ngo'), reportController.verify);
 router.post('/:id/accept', authorizeRoles('ngo'), reportController.accept);
 router.patch('/:id/status', authorizeRoles('ngo'), reportController.updateStatus);
 

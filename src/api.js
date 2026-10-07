@@ -130,3 +130,23 @@ export const updateReportStatus = async ({ reportId, status, note }) => {
   });
   return normalizeReport(result.report);
 };
+
+export const verifyReport = async (reportId) => {
+  const result = await request(`/reports/${encodeURIComponent(reportId)}/verify`, {
+    method: 'PATCH',
+  });
+  return normalizeReport(result.report);
+};
+
+export const getNgoAvailability = async () => {
+  const result = await request('/ngo/availability');
+  return result.status;
+};
+
+export const setNgoAvailability = async (status) => {
+  const result = await request('/ngo/availability', {
+    method: 'PUT',
+    body: JSON.stringify({ status }),
+  });
+  return result.status;
+};
