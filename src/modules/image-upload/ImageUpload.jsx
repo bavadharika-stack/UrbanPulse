@@ -13,10 +13,11 @@ import {
 } from 'lucide-react';
 import { createReport } from '../../api';
 import reportCategories from '../../../shared/reportCategories.json';
+import { FormField } from '../../shared/ui';
 
-export default function ImageUpload({ onBackToDashboard }) {
+export default function ImageUpload({ onBackToDashboard, initialLocation = '' }) {
   const [formData, setFormData] = useState({
-    location: '',
+    location: initialLocation,
     category: '',
     title: '',
     description: '',
@@ -182,7 +183,7 @@ export default function ImageUpload({ onBackToDashboard }) {
   const handleReset = () => {
     updateImagePreview('');
     setFormData({
-      location: '',
+      location: initialLocation,
       category: '',
       title: '',
       description: '',
@@ -320,10 +321,7 @@ export default function ImageUpload({ onBackToDashboard }) {
 
         <form onSubmit={handleSubmit} noValidate>
           {/* 1. Location / Area */}
-          <div className="form-group">
-            <label htmlFor="report-location" className="form-label">
-              Location / Area <span className="text-danger">*</span>
-            </label>
+          <FormField label={<>Location / Area <span className="text-danger">*</span></>} htmlFor="report-location" error={errors.location}>
             <div className="input-group">
               <span className="input-prefix">
                 <MapPin size={17} />
@@ -340,8 +338,7 @@ export default function ImageUpload({ onBackToDashboard }) {
                 required
               />
             </div>
-            {errors.location && <div className="form-feedback">{errors.location}</div>}
-          </div>
+          </FormField>
 
           {/* 2. Issue Category */}
           <div className="form-group">

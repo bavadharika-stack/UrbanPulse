@@ -1,23 +1,33 @@
 import React, { useState, useEffect } from 'react';
 import { User, LogOut, Camera, ArrowRight, MapPin, CheckCircle2, Clock, FileText, AlertCircle, Map, Star } from 'lucide-react';
 import { getReports } from '../../api';
+import reportCategories from '../../../shared/reportCategories.json';
+import useUrlFilters from '../../shared/useUrlFilters';
+import { EmptyState, Skeleton } from '../../shared/ui';
+import { PaginationControls, ReportFilters } from '../../shared/ReportFilters';
+
+const DEFAULT_FILTERS = { page: '1', pageSize: '20', q: '', category: '', status: '', from: '', to: '' };
 
 export default function Dashboard({ currentUser, onLogout, onStartReport, onOpenMap, onRatePlace }) {
   const [reports, setReports] = useState([]);
+  const [pagination, setPagination] = useState(null);
   const [stats, setStats] = useState({ total: 0, underReview: 0, resolved: 0 });
   const [reportsError, setReportsError] = useState('');
   const [isLoadingReports, setIsLoadingReports] = useState(true);
+  const [filters, setFilters] = useUrlFilters(DEFAULT_FILTERS);
 
   useEffect(() => {
     let active = true;
-    getReports()
-      .then((loadedReports) => {
+    setIsLoadingReports(true);
+    getReports(filters)
+      .then((result) => {
         if (!active) return;
-        setReports(loadedReports);
+        setReports(result.reports);
+        setPagination(result.pagination);
         setStats({
-          total: loadedReports.length,
-          underReview: loadedReports.filter((report) => ['accepted', 'in_progress'].includes(report.status)).length,
-          resolved: loadedReports.filter((report) => report.status === 'resolved').length,
+          total: result.summary.total,
+          underReview: result.summary.accepted + result.summary.in_progress,
+          resolved: result.summary.resolved,
         });
       })
       .catch((error) => {
@@ -27,7 +37,7 @@ export default function Dashboard({ currentUser, onLogout, onStartReport, onOpen
         if (active) setIsLoadingReports(false);
       });
     return () => { active = false; };
-  }, []);
+  }, [filters]);
 
   // Helper to render status badge with appropriate styling
   const renderStatusBadge = (status) => {
@@ -169,15 +179,12 @@ export default function Dashboard({ currentUser, onLogout, onStartReport, onOpen
           <p className="card-subtitle">Track the status of your reported public space issues</p>
         </div>
 
+        <ReportFilters filters={filters} onChange={setFilters} categories={reportCategories} />
         <div className="reports-list">
           {isLoadingReports ? (
-            <p style={{ fontSize: '0.875rem', color: '#64748b', textAlign: 'center', padding: '1rem' }}>
-              Loading your reports…
-            </p>
+            <Skeleton lines={4} />
           ) : reports.length === 0 ? (
-            <p style={{ fontSize: '0.875rem', color: '#64748b', textAlign: 'center', padding: '1rem' }}>
-              No reports submitted yet. Click "Report an Issue" to submit your first report.
-            </p>
+            <EmptyState title="No matching reports" description="Adjust the search and filters, or submit a new issue." />
           ) : (
             reports.map((rep) => (
               <div key={rep.id} className="report-item">
@@ -195,6 +202,7 @@ export default function Dashboard({ currentUser, onLogout, onStartReport, onOpen
             ))
           )}
         </div>
+        <PaginationControls pagination={pagination} onPageChange={(page) => setFilters({ page: String(page) })} />
 
         {/* Sign Out Action */}
         <div className="dashboard-actions mt-3" style={{ paddingTop: '0.85rem', borderTop: '1px solid var(--border-color)' }}>

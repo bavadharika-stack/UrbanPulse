@@ -28,6 +28,9 @@ const ratingScore = (ratings, fields) => {
   return mean === null ? null : mean * 20;
 };
 
+const ratingCount = (ratings, fields) => ratings.filter((rating) =>
+  fields.some((field) => rating[field] !== null && rating[field] !== undefined)).length;
+
 // Reduce the base by applicable open-report penalties without allowing scores below zero.
 const subtractPenalty = (score, penalty) =>
   score === null ? null : Math.max(0, Math.min(100, score - penalty));
@@ -63,7 +66,19 @@ const scoreLocation = ({ location, ratings = [], reports = [] }) => {
   );
   const heatComfort = ratingScore(ratings, ['shade', 'water_availability']);
   const scoreEntries = { accessibility, walkability, safety, cleanliness, heatComfort };
+  const scoreCounts = {
+    accessibility: ratingCount(ratings, ['accessibility']),
+    walkability: ratingCount(ratings, ['safety', 'lighting', 'seating']),
+    safety: ratingCount(ratings, ['safety', 'lighting']),
+    cleanliness: ratingCount(ratings, ['cleanliness']),
+    heatComfort: ratingCount(ratings, ['shade', 'water_availability']),
+    overall: ratings.length,
+  };
   const overall = average(Object.values(scoreEntries));
+  const confidence = Object.fromEntries(
+    [...Object.entries(scoreEntries), ['overall', overall]]
+      .map(([key, value]) => [key, value === null ? null : (scoreCounts[key] < 3 ? 'low' : 'normal')]),
+  );
   const scoredDimensions = Object.entries(scoreEntries)
     .filter(([, value]) => value !== null)
     .sort((left, right) => left[1] - right[1]);
@@ -88,6 +103,8 @@ const scoreLocation = ({ location, ratings = [], reports = [] }) => {
   return {
     ...location,
     scores: { ...scoreEntries, overall },
+    scoreCounts,
+    confidence,
     colorBand: colorBand(overall),
     weakestScore: weakest ? {
       key: weakest[0],

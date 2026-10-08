@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, Building2, LogOut, RefreshCw } from 'lucide-react';
 import {
   getLocationScores,
@@ -7,6 +7,13 @@ import {
   updatePlaceStatus,
 } from '../../api';
 import reportCategories from '../../../shared/reportCategories.json';
+import useUrlFilters from '../../shared/useUrlFilters';
+import { Badge, EmptyState, Skeleton } from '../../shared/ui';
+import { PaginationControls, ReportFilters } from '../../shared/ReportFilters';
+
+const DEFAULT_FILTERS = {
+  page: '1', pageSize: '20', q: '', category: '', status: '', from: '', to: '', department: '', priority: '',
+};
 
 const STATUS_LABELS = {
   pending: 'Pending',
@@ -24,26 +31,36 @@ const PRIORITY_COLORS = {
 
 export default function AuthorityDashboard({ currentUser, onLogout }) {
   const [reports, setReports] = useState([]);
+  const [pagination, setPagination] = useState(null);
+  const [summary, setSummary] = useState({ total: 0, pending: 0, accepted: 0, in_progress: 0, resolved: 0 });
+  const [categoryCounts, setCategoryCounts] = useState({});
+  const [departments, setDepartments] = useState([]);
   const [locationScores, setLocationScores] = useState([]);
   const [citizenPlaces, setCitizenPlaces] = useState([]);
   const [placeActionBusy, setPlaceActionBusy] = useState(null);
-  const [departmentFilter, setDepartmentFilter] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('');
-  const [priorityFilter, setPriorityFilter] = useState('');
+  const [filters, setFilters] = useUrlFilters(DEFAULT_FILTERS);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [scoreError, setScoreError] = useState('');
   const [placeModerationError, setPlaceModerationError] = useState('');
+  const reportsRequestId = useRef(0);
 
-  const loadReports = async () => {
+  const loadReports = async (query = filters) => {
+    const requestId = ++reportsRequestId.current;
     setIsLoading(true);
     setError('');
     try {
-      setReports(await getReports());
+      const result = await getReports(query);
+      if (requestId !== reportsRequestId.current) return;
+      setReports(result.reports);
+      setPagination(result.pagination);
+      setSummary(result.summary);
+      setCategoryCounts(result.categoryCounts);
+      setDepartments(result.departments);
     } catch (loadError) {
-      setError(loadError.message);
+      if (requestId === reportsRequestId.current) setError(loadError.message);
     } finally {
-      setIsLoading(false);
+      if (requestId === reportsRequestId.current) setIsLoading(false);
     }
   };
 
@@ -66,7 +83,10 @@ export default function AuthorityDashboard({ currentUser, onLogout }) {
   };
 
   useEffect(() => {
-    loadReports();
+    loadReports(filters);
+  }, [filters]);
+
+  useEffect(() => {
     loadLocationScores();
     loadCitizenPlaces();
   }, []);
@@ -84,31 +104,12 @@ export default function AuthorityDashboard({ currentUser, onLogout }) {
     }
   };
 
-  const departments = useMemo(
-    () => [...new Set(reports.map((report) => report.department).filter(Boolean))].sort(),
-    [reports],
-  );
-
-  const statusCounts = useMemo(() => reports.reduce((counts, report) => {
-    counts[report.status] = (counts[report.status] || 0) + 1;
-    return counts;
-  }, { pending: 0, accepted: 0, in_progress: 0, resolved: 0 }), [reports]);
-
-  const categoryCounts = useMemo(() => reports.reduce((counts, report) => {
-    counts[report.category] = (counts[report.category] || 0) + 1;
-    return counts;
-  }, {}), [reports]);
-
   const categories = useMemo(
     () => [...new Set([...reportCategories, ...Object.keys(categoryCounts)])].sort(),
     [categoryCounts],
   );
 
-  const filteredReports = reports.filter((report) => (
-    (!departmentFilter || report.department === departmentFilter)
-    && (!categoryFilter || report.category === categoryFilter)
-    && (!priorityFilter || report.priority === priorityFilter)
-  ));
+  const categoryFilter = filters.category;
 
   return (
     <div className="dashboard-container" style={{ maxWidth: '100%' }}>
@@ -144,23 +145,35 @@ export default function AuthorityDashboard({ currentUser, onLogout }) {
                 <th scope="col">Overall</th>
                 <th scope="col">Weakest score</th>
                 <th scope="col">Main issue</th>
+                <th scope="col">Open issues</th>
               </tr>
             </thead>
             <tbody>
               {locationScores.map((place) => (
                 <tr key={place.id}>
                   <th scope="row">{place.name}</th>
-                  <td>{place.scores.overall === null ? 'No data' : `${Math.round(place.scores.overall)}/100`}</td>
+                  <td>
+                    {place.scores.overall === null ? 'No data' : (
+                      <>
+                        {Math.round(place.scores.overall)}/100, based on {place.scoreCounts.overall} ratings
+                        {place.confidence.overall === 'low' && <Badge tone="score-yellow" className="rating-confidence">Low confidence</Badge>}
+                      </>
+                    )}
+                  </td>
                   <td>
                     {place.weakestScore
-                      ? `${place.weakestScore.label}: ${place.weakestScore.value}/100`
+                      ? <>
+                        {place.weakestScore.label}: {place.weakestScore.value}/100, based on {place.scoreCounts[place.weakestScore.key]} ratings
+                        {place.confidence[place.weakestScore.key] === 'low' && <Badge tone="score-yellow" className="rating-confidence">Low confidence</Badge>}
+                      </>
                       : 'No data'}
                   </td>
                   <td>{place.mainIssue}</td>
+                  <td>{place.openReportCount}</td>
                 </tr>
               ))}
               {!locationScores.length && !scoreError && (
-                <tr><td colSpan="4">No location scores are available.</td></tr>
+                <tr><td colSpan="5">No location scores are available.</td></tr>
               )}
             </tbody>
           </table>
@@ -220,7 +233,7 @@ export default function AuthorityDashboard({ currentUser, onLogout }) {
               key={category}
               className="stat-card"
               aria-pressed={categoryFilter === category}
-              onClick={() => setCategoryFilter(categoryFilter === category ? '' : category)}
+              onClick={() => setFilters({ category: categoryFilter === category ? '' : category, page: '1' })}
               style={{
                 cursor: 'pointer',
                 border: categoryFilter === category ? '2px solid #0284c7' : undefined,
@@ -243,7 +256,7 @@ export default function AuthorityDashboard({ currentUser, onLogout }) {
         <div className="activity-stats-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(115px, 1fr))' }}>
           {Object.entries(STATUS_LABELS).map(([status, label]) => (
             <div className="stat-card" key={status}>
-              <div className="stat-number">{statusCounts[status] || 0}</div>
+              <div className="stat-number">{summary[status] || 0}</div>
               <div className="stat-label">{label}</div>
             </div>
           ))}
@@ -256,51 +269,20 @@ export default function AuthorityDashboard({ currentUser, onLogout }) {
           <p className="card-subtitle">Filter by category, assigned department, or calculated priority</p>
         </div>
 
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', marginTop: '0.85rem' }}>
-          <div className="form-group" style={{ flex: '1 1 220px', marginBottom: 0 }}>
-            <label className="form-label" htmlFor="authority-category-filter">Category</label>
-            <select
-              id="authority-category-filter"
-              className="form-control input-no-prefix"
-              value={categoryFilter}
-              onChange={(event) => setCategoryFilter(event.target.value)}
-            >
-              <option value="">All categories</option>
-              {categories.map((category) => <option key={category} value={category}>{category}</option>)}
-            </select>
-          </div>
-          <div className="form-group" style={{ flex: '1 1 220px', marginBottom: 0 }}>
-            <label className="form-label" htmlFor="authority-department-filter">Department</label>
-            <select
-              id="authority-department-filter"
-              className="form-control input-no-prefix"
-              value={departmentFilter}
-              onChange={(event) => setDepartmentFilter(event.target.value)}
-            >
-              <option value="">All departments</option>
-              {departments.map((department) => <option key={department}>{department}</option>)}
-            </select>
-          </div>
-          <div className="form-group" style={{ flex: '1 1 180px', marginBottom: 0 }}>
-            <label className="form-label" htmlFor="authority-priority-filter">Priority</label>
-            <select
-              id="authority-priority-filter"
-              className="form-control input-no-prefix"
-              value={priorityFilter}
-              onChange={(event) => setPriorityFilter(event.target.value)}
-            >
-              <option value="">All priorities</option>
-              {['low', 'medium', 'high', 'critical'].map((priority) => (
-                <option key={priority} value={priority}>{priority[0].toUpperCase() + priority.slice(1)}</option>
-              ))}
-            </select>
-          </div>
+        <ReportFilters
+          filters={filters}
+          onChange={setFilters}
+          categories={categories}
+          departments={departments}
+          showDepartment
+          showPriority
+        />
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.75rem' }}>
           <button
             type="button"
             className="btn btn-secondary"
-            onClick={loadReports}
+            onClick={() => loadReports(filters)}
             disabled={isLoading}
-            style={{ alignSelf: 'flex-end' }}
           >
             <RefreshCw size={15} /><span>Refresh</span>
           </button>
@@ -314,12 +296,10 @@ export default function AuthorityDashboard({ currentUser, onLogout }) {
 
         <div className="reports-list">
           {isLoading ? (
-            <p className="card-subtitle" style={{ textAlign: 'center', padding: '1rem' }}>Loading reports…</p>
-          ) : filteredReports.length === 0 ? (
-            <p className="card-subtitle" style={{ textAlign: 'center', padding: '1rem' }}>
-              No reports match the selected filters.
-            </p>
-          ) : filteredReports.map((report) => (
+            <Skeleton lines={4} />
+          ) : reports.length === 0 ? (
+            <EmptyState title="No matching reports" description="Try changing your search or filters." />
+          ) : reports.map((report) => (
             <article key={report.id} className="report-item" style={{ alignItems: 'flex-start' }}>
               <div className="report-item-main" style={{ flex: 1, minWidth: 0 }}>
                 <span className="report-item-title">{report.title}</span>
@@ -330,29 +310,20 @@ export default function AuthorityDashboard({ currentUser, onLogout }) {
                     AI: {report.aiCategory} · {report.aiSeverity} severity · {report.aiSentiment} sentiment
                   </span>
                 )}
-                {report.verified && (
-                  <span className="status-badge status-badge-resolved" style={{ alignSelf: 'flex-start' }}>
-                    NGO Verified
-                  </span>
-                )}
+                {report.verified && <Badge tone="score-green">NGO Verified</Badge>}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.4rem' }}>
-                <span
-                  className="status-badge"
-                  style={{
-                    color: PRIORITY_COLORS[report.priority] || PRIORITY_COLORS.medium,
-                    border: `1px solid ${PRIORITY_COLORS[report.priority] || PRIORITY_COLORS.medium}`,
-                  }}
-                >
+                <Badge tone="priority" style={{ color: PRIORITY_COLORS[report.priority] || PRIORITY_COLORS.medium }}>
                   {(report.priority || 'medium').toUpperCase()}
-                </span>
-                <span className="status-badge status-badge-submitted">
+                </Badge>
+                <Badge tone={report.status === 'resolved' ? 'score-green' : report.status === 'in_progress' ? 'score-yellow' : 'status'}>
                   {STATUS_LABELS[report.status] || report.status}
-                </span>
+                </Badge>
               </div>
             </article>
           ))}
         </div>
+        <PaginationControls pagination={pagination} onPageChange={(page) => setFilters({ page: String(page) })} />
       </div>
     </div>
   );

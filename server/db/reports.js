@@ -198,15 +198,106 @@ const createReport = async ({
   return getReportById({ id: save(), role: 'authority' });
 };
 
-const getReports = async ({ userId, role }) => {
-  const whereCitizen = role === 'citizen' ? 'WHERE reports.citizen_id = ?' : '';
-  const statement = db.prepare(`${reportSelect} ${whereCitizen} ORDER BY reports.created_at DESC, reports.id DESC`);
-  const rows = role === 'citizen' ? statement.all(userId) : statement.all();
-  return rows.map((row) => ({
+const getReports = async ({
+  userId,
+  role,
+  page = 1,
+  pageSize = 20,
+  q = '',
+  category = '',
+  status = '',
+  department = '',
+  priority = '',
+  from = '',
+  to = '',
+  scope = '',
+}) => {
+  const conditions = [];
+  const parameters = [];
+  if (role === 'citizen') {
+    conditions.push('reports.citizen_id = ?');
+    parameters.push(userId);
+  }
+  if (role === 'ngo' && scope === 'available') {
+    conditions.push("reports.status = 'pending'");
+  } else if (role === 'ngo' && scope === 'mine') {
+    conditions.push("reports.status IN ('accepted', 'in_progress', 'resolved')");
+    conditions.push('reports.accepted_by_ngo_id = ?');
+    parameters.push(userId);
+  }
+  const baseConditions = [...conditions];
+  const baseParameters = [...parameters];
+  if (q) {
+    conditions.push('(reports.title LIKE ? OR reports.location_name LIKE ? OR reports.description LIKE ?)');
+    const search = `%${q}%`;
+    parameters.push(search, search, search);
+  }
+  if (category) {
+    conditions.push('reports.category = ?');
+    parameters.push(category);
+  }
+  if (department) {
+    conditions.push('reports.department = ?');
+    parameters.push(department);
+  }
+  if (priority) {
+    conditions.push('reports.priority = ?');
+    parameters.push(priority);
+  }
+  if (status) {
+    const statuses = status.split(',').filter((value) =>
+      ['pending', 'accepted', 'in_progress', 'resolved'].includes(value));
+    if (statuses.length) {
+      conditions.push(`reports.status IN (${statuses.map(() => '?').join(', ')})`);
+      parameters.push(...statuses);
+    }
+  }
+  if (from) {
+    conditions.push('date(reports.created_at) >= date(?)');
+    parameters.push(from);
+  }
+  if (to) {
+    conditions.push('date(reports.created_at) <= date(?)');
+    parameters.push(to);
+  }
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  const total = db.prepare(`SELECT COUNT(*) AS total FROM reports ${where}`).get(...parameters).total;
+  const baseWhere = baseConditions.length ? `WHERE ${baseConditions.join(' AND ')}` : '';
+  const summaryRows = db.prepare(`
+    SELECT status, COUNT(*) AS count FROM reports ${baseWhere} GROUP BY status
+  `).all(...baseParameters);
+  const categoryRows = db.prepare(`
+    SELECT category, COUNT(*) AS count FROM reports ${baseWhere} GROUP BY category
+  `).all(...baseParameters);
+  const departmentRows = db.prepare(`
+    SELECT DISTINCT department FROM reports ${baseWhere}
+    ${baseConditions.length ? 'AND' : 'WHERE'} department IS NOT NULL AND department != ''
+  `).all(...baseParameters);
+  const rows = db.prepare(`
+    ${reportSelect} ${where}
+    ORDER BY reports.created_at DESC, reports.id DESC
+    LIMIT ? OFFSET ?
+  `).all(...parameters, pageSize, (page - 1) * pageSize);
+  return {
+    reports: rows.map((row) => ({
     ...row,
     fileName: row.imagePath ? row.imagePath.split(/[\\/]/).pop() : '',
     imageUrl: row.imagePath ? `/${row.imagePath.replace(/\\/g, '/')}` : '',
-  }));
+    })),
+    pagination: {
+      page,
+      pageSize,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / pageSize)),
+    },
+    summary: summaryRows.reduce((summary, row) => {
+      summary[row.status] = row.count;
+      summary.total += row.count;
+      return summary;
+    }, { total: 0, pending: 0, accepted: 0, in_progress: 0, resolved: 0 }),
+    categoryCounts: Object.fromEntries(categoryRows.map((row) => [row.category, row.count])),
+    departments: departmentRows.map((row) => row.department),
+  };
 };
 
 const getReportById = async ({ id, userId, role }) => {

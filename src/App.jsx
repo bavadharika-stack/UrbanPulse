@@ -11,12 +11,30 @@ import ImageUpload from './modules/image-upload/ImageUpload';
 import RatePlace from './modules/places/RatePlace';
 import PublicSpaceMap from './modules/places/PublicSpaceMap';
 import { getCurrentUser, logoutUser } from './api';
+import { ToastProvider } from './shared/ui';
 
 export default function App() {
   const [currentView, setCurrentView] = useState('login');
   const [currentUser, setCurrentUser] = useState(null);
   const [prefilledEmail, setPrefilledEmail] = useState('');
   const [sessionError, setSessionError] = useState('');
+  const [theme, setTheme] = useState(() => {
+    try {
+      return localStorage.getItem('urbanpulse_theme') === 'dark' ? 'dark' : 'light';
+    } catch {
+      return 'light';
+    }
+  });
+  const [reportLocationPrefill, setReportLocationPrefill] = useState('');
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try {
+      localStorage.setItem('urbanpulse_theme', theme);
+    } catch {
+      // The app remains usable when browser preference storage is unavailable.
+    }
+  }, [theme]);
 
   const getHomeView = (user) => {
     if (user?.role === 'ngo') return 'ngo-dashboard';
@@ -82,6 +100,7 @@ export default function App() {
   };
 
   return (
+    <ToastProvider>
     <div className="app-layout">
       {/* Top Navigation Bar */}
       <Header
@@ -89,6 +108,8 @@ export default function App() {
         currentUser={currentUser}
         onNavigate={handleNavClick}
         onLogout={handleLogout}
+        theme={theme}
+        onToggleTheme={() => setTheme((current) => current === 'light' ? 'dark' : 'light')}
       />
 
       {/* Main Page Body */}
@@ -128,7 +149,10 @@ export default function App() {
             <Dashboard
               currentUser={currentUser}
               onLogout={handleLogout}
-              onStartReport={() => setCurrentView('image-upload')}
+              onStartReport={(location = '') => {
+                setReportLocationPrefill(location);
+                setCurrentView('image-upload');
+              }}
               onOpenMap={() => setCurrentView('map')}
               onRatePlace={() => setCurrentView('rate-place')}
             />
@@ -137,11 +161,18 @@ export default function App() {
           {currentView === 'image-upload' && (
             <ImageUpload
               onBackToDashboard={() => setCurrentView('dashboard')}
+              initialLocation={reportLocationPrefill}
             />
           )}
 
           {currentView === 'rate-place' && currentUser?.role === 'citizen' && (
-            <RatePlace onBack={() => setCurrentView('dashboard')} />
+            <RatePlace
+              onBack={() => setCurrentView('dashboard')}
+              onReportIssue={(location) => {
+                setReportLocationPrefill(location);
+                setCurrentView('image-upload');
+              }}
+            />
           )}
 
           {currentView === 'map' && currentUser?.role === 'citizen' && (
@@ -153,5 +184,6 @@ export default function App() {
       {/* Footer */}
       <Footer />
     </div>
+    </ToastProvider>
   );
 }

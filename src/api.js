@@ -106,9 +106,16 @@ const normalizeReport = (report) => ({
   imageUrl: normalizeImageUrl(report.imageUrl),
 });
 
-export const getReports = async () => {
-  const result = await request('/reports');
-  return result.reports.map(normalizeReport);
+export const getReports = async (filters = {}) => {
+  const params = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && String(value) !== '') params.set(key, String(value));
+  });
+  const result = await request(`/reports${params.size ? `?${params.toString()}` : ''}`);
+  return {
+    ...result,
+    reports: result.reports.map(normalizeReport),
+  };
 };
 
 export const getLocations = async () => {

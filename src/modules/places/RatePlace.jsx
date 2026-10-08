@@ -3,6 +3,10 @@ import L from 'leaflet';
 import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import { AlertCircle, ArrowLeft, CheckCircle2, MapPin, Search } from 'lucide-react';
 import { createPlace, getLocations, searchPlaces, submitPlaceRating } from '../../api';
+import useUrlFilters from '../../shared/useUrlFilters';
+import { Badge, Card, FormField, useToast } from '../../shared/ui';
+
+const DEFAULT_PLACE_FILTER = { place: '' };
 
 const REQUIRED_FIELDS = [
   ['cleanliness', 'Cleanliness'],
@@ -68,8 +72,22 @@ function StarRating({ name, label, value, onChange, optional = false }) {
             role="radio"
             aria-checked={value === star}
             aria-label={`${star} out of 5`}
+            tabIndex={value === star || (!value && star === 1) ? 0 : -1}
             className={`rating-star${value >= star ? ' selected' : ''}`}
             onClick={() => onChange(name, star)}
+            onKeyDown={(event) => {
+              if (['ArrowRight', 'ArrowUp'].includes(event.key)) {
+                event.preventDefault();
+                const next = star === 5 ? 1 : star + 1;
+                onChange(name, next);
+                event.currentTarget.parentElement.querySelector(`[aria-label="${next} out of 5"]`)?.focus();
+              } else if (['ArrowLeft', 'ArrowDown'].includes(event.key)) {
+                event.preventDefault();
+                const next = star === 1 ? 5 : star - 1;
+                onChange(name, next);
+                event.currentTarget.parentElement.querySelector(`[aria-label="${next} out of 5"]`)?.focus();
+              }
+            }}
           >
             ★
           </button>
@@ -85,7 +103,7 @@ function StarRating({ name, label, value, onChange, optional = false }) {
   );
 }
 
-export default function RatePlace({ onBack }) {
+export default function RatePlace({ onBack, onReportIssue }) {
   const [locations, setLocations] = useState([]);
   const [locationId, setLocationId] = useState('');
   const [isAddingPlace, setIsAddingPlace] = useState(false);
@@ -103,6 +121,13 @@ export default function RatePlace({ onBack }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [lowRatingPlace, setLowRatingPlace] = useState('');
+  const [placeFilters, setPlaceFilters] = useUrlFilters(DEFAULT_PLACE_FILTER);
+  const notify = useToast();
+  const visibleLocations = locations.filter((place) => (
+    !placeFilters.place
+    || `${place.name} ${place.address || ''}`.toLowerCase().includes(placeFilters.place.toLowerCase())
+  ));
 
   useEffect(() => {
     let active = true;
@@ -153,6 +178,7 @@ export default function RatePlace({ onBack }) {
     event.preventDefault();
     setError('');
     setSuccess('');
+    setLowRatingPlace('');
     if (isAddingPlace) return;
     if (!locationId) {
       setError('Choose a place to rate.');
@@ -171,6 +197,11 @@ export default function RatePlace({ onBack }) {
         comment: comment.trim(),
       });
       setSuccess('Thanks — your place rating has been submitted.');
+      const lowScore = Object.values(ratings).some((value) => value !== null && value <= 2);
+      if (lowScore) {
+        setLowRatingPlace(locations.find((place) => String(place.id) === locationId)?.name || '');
+      }
+      notify('Your place rating has been submitted.');
       setRatings(EMPTY_RATING);
       setComment('');
     } catch (submitError) {
@@ -183,6 +214,7 @@ export default function RatePlace({ onBack }) {
   const handlePlaceSelect = (value) => {
     setError('');
     setSuccess('');
+    setLowRatingPlace('');
     if (value === ADD_PLACE_OPTION) {
       setLocationId(ADD_PLACE_OPTION);
       setIsAddingPlace(true);
@@ -247,7 +279,12 @@ export default function RatePlace({ onBack }) {
         </div>
       </div>
 
-      <form className="card mt-3" onSubmit={handleSubmit}>
+      <Card as="form" className="mt-3" onSubmit={handleSubmit}>
+        <FormField label="Search places" htmlFor="rating-place-search">
+          <input id="rating-place-search" type="search" className="form-control input-no-prefix"
+            value={placeFilters.place} maxLength={120} placeholder="Find a place by name or address"
+            onChange={(event) => setPlaceFilters({ place: event.target.value })} />
+        </FormField>
         <div className="form-group">
           <label className="form-label" htmlFor="rating-location">
             <MapPin size={14} /> Place <span className="text-danger">*</span>
@@ -261,7 +298,7 @@ export default function RatePlace({ onBack }) {
             required
           >
             <option value="">{isLoading ? 'Loading places…' : 'Choose a Chennai place'}</option>
-            {locations.map((location) => (
+            {visibleLocations.map((location) => (
               <option key={location.id} value={location.id}>{location.name}</option>
             ))}
             <option value={ADD_PLACE_OPTION}>Can’t find your place? Add it</option>
@@ -345,7 +382,7 @@ export default function RatePlace({ onBack }) {
         )}
 
         {!isAddingPlace && locationId && locations.find((place) => String(place.id) === locationId)?.isUserAdded === 1 && (
-          <p className="citizen-added-label mt-2">Added by a citizen</p>
+          <Badge tone="status" className="citizen-added-label mt-2">Added by a citizen</Badge>
         )}
 
         {!isAddingPlace && locationId && (
@@ -372,8 +409,7 @@ export default function RatePlace({ onBack }) {
         </div>
         )}
 
-        {!isAddingPlace && locationId && <div className="form-group mt-3">
-          <label className="form-label" htmlFor="rating-comment">Comment (optional)</label>
+        {!isAddingPlace && locationId && <FormField label="Comment (optional)" htmlFor="rating-comment" className="mt-3">
           <textarea
             id="rating-comment"
             className="form-control input-no-prefix"
@@ -385,7 +421,7 @@ export default function RatePlace({ onBack }) {
             disabled={isSubmitting}
           />
           <span className="card-subtitle">{comment.length}/1000</span>
-        </div>}
+        </FormField>}
 
         {error && (
           <div className="alert alert-error mt-2" role="alert">
@@ -397,12 +433,20 @@ export default function RatePlace({ onBack }) {
             <CheckCircle2 size={18} /><span>{success}</span>
           </div>
         )}
+        {lowRatingPlace && (
+          <div className="alert alert-warning mt-2" role="status">
+            <span>One or more ratings are 2 or lower. Is something specific broken?</span>
+            <button type="button" className="link-button" onClick={() => onReportIssue?.(lowRatingPlace)}>
+              Report an issue
+            </button>
+          </div>
+        )}
 
         {!isAddingPlace && locationId && <button type="submit" className="btn btn-primary mt-3" disabled={isLoading || isSubmitting || !locations.length}>
           {isSubmitting ? 'Submitting…' : 'Submit Rating'}
         </button>}
         {!isAddingPlace && locationId && <p className="card-subtitle mt-2">You can submit one rating for each place per day.</p>}
-      </form>
+      </Card>
     </div>
   );
 }

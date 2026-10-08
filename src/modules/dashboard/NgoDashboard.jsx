@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Building2, LogOut, Tag, CheckCircle2, Circle,
   MapPin, Image, ClipboardCheck, Clock, PlayCircle,
@@ -12,15 +12,13 @@ import {
   updateReportStatus,
   verifyReport,
 } from '../../api';
+import useUrlFilters from '../../shared/useUrlFilters';
+import { Badge, EmptyState, Skeleton } from '../../shared/ui';
+import { PaginationControls, ReportFilters } from '../../shared/ReportFilters';
+
+const DEFAULT_FILTERS = { page: '1', pageSize: '20', q: '', status: '', from: '', to: '' };
 
 // ─── Status badge ────────────────────────────────────────────────────────────
-
-const STATUS_STYLES = {
-  pending:     { bg: '#f0f9ff', border: '#bae6fd', color: '#0284c7' },
-  accepted:    { bg: '#eff6ff', border: '#93c5fd', color: '#1d4ed8' },
-  in_progress: { bg: '#fefce8', border: '#fde047', color: '#a16207' },
-  resolved:    { bg: '#f0fdf4', border: '#86efac', color: '#16a34a' },
-};
 
 function StatusBadge({ status }) {
   const labels = {
@@ -29,16 +27,10 @@ function StatusBadge({ status }) {
     in_progress: 'In Progress',
     resolved: 'Resolved',
   };
-  const s = STATUS_STYLES[status] || STATUS_STYLES.pending;
   return (
-    <span style={{
-      fontSize: '0.75rem', fontWeight: 600,
-      padding: '0.2rem 0.6rem', borderRadius: '999px',
-      background: s.bg, border: `1px solid ${s.border}`, color: s.color,
-      whiteSpace: 'nowrap',
-    }}>
+    <Badge tone={status === 'resolved' ? 'score-green' : status === 'in_progress' ? 'score-yellow' : 'status'}>
       {labels[status] || status}
-    </span>
+    </Badge>
   );
 }
 
@@ -237,26 +229,44 @@ export default function NgoDashboard({ currentUser, onLogout }) {
   const [accepting, setAccepting] = useState(null);
   const [verifying, setVerifying] = useState(null);
   const [issuesError, setIssuesError] = useState('');
+  const [issuesLoading, setIssuesLoading] = useState(true);
   const [availabilityBusy, setAvailabilityBusy] = useState(false);
+  const [filters, setFilters] = useUrlFilters(DEFAULT_FILTERS);
+  const [availablePagination, setAvailablePagination] = useState(null);
+  const [acceptedPagination, setAcceptedPagination] = useState(null);
+  const issuesRequestId = useRef(0);
 
   const isAvailable = availability === 'available';
 
   const loadIssues = useCallback(async () => {
+    const requestId = ++issuesRequestId.current;
     setIssuesError('');
-    try {
-      const all = await getReports();
-      const matched = all.filter((report) => report.category && report.category === ngoType);
-      const mine = matched.filter(
-        (report) => ['accepted', 'in_progress', 'resolved'].includes(report.status)
-          && String(report.acceptedByNgoId) === String(ngoId)
-      );
-      const open = isAvailable ? matched.filter((report) => report.status === 'pending') : [];
-      setAcceptedIssues(mine);
-      setAvailableIssues(open);
-    } catch (error) {
-      setIssuesError(error.message);
+    setIssuesLoading(true);
+    if (!ngoType) {
+      setAcceptedIssues([]);
+      setAvailableIssues([]);
+      setAcceptedPagination(null);
+      setAvailablePagination(null);
+      if (requestId === issuesRequestId.current) setIssuesLoading(false);
+      return;
     }
-  }, [ngoType, ngoId, isAvailable]);
+    try {
+      const common = { ...filters, category: ngoType, pageSize: '20' };
+      const [mineResult, openResult] = await Promise.all([
+        getReports({ ...common, scope: 'mine' }),
+        isAvailable ? getReports({ ...common, scope: 'available' }) : Promise.resolve({ reports: [], pagination: null }),
+      ]);
+      if (requestId !== issuesRequestId.current) return;
+      setAcceptedIssues(mineResult.reports);
+      setAvailableIssues(openResult.reports);
+      setAcceptedPagination(mineResult.pagination);
+      setAvailablePagination(openResult.pagination);
+    } catch (error) {
+      if (requestId === issuesRequestId.current) setIssuesError(error.message);
+    } finally {
+      if (requestId === issuesRequestId.current) setIssuesLoading(false);
+    }
+  }, [ngoType, ngoId, isAvailable, filters]);
 
   useEffect(() => { loadIssues(); }, [loadIssues]);
 
@@ -371,6 +381,14 @@ export default function NgoDashboard({ currentUser, onLogout }) {
         </div>
       </div>
 
+      <div className="card mt-3">
+        <div className="card-header" style={{ marginBottom: '0.25rem' }}>
+          <h3 className="card-title" style={{ fontSize: '1.1rem' }}>Search and filter reports</h3>
+          <p className="card-subtitle">Filters are saved in the page URL.</p>
+        </div>
+        <ReportFilters filters={filters} onChange={setFilters} categories={ngoType ? [ngoType] : []} />
+      </div>
+
       {/* ── Available Issues ── */}
       <div className="card mt-3">
         <div className="card-header" style={{ marginBottom: '0.5rem' }}>
@@ -384,11 +402,12 @@ export default function NgoDashboard({ currentUser, onLogout }) {
           <p style={{ fontSize: '0.875rem', color: '#94a3b8', textAlign: 'center', padding: '1rem' }}>
             Set your availability to <strong>Available</strong> to see matching issues.
           </p>
+        ) : issuesLoading ? (
+          <Skeleton lines={4} />
         ) : availableIssues.length === 0 ? (
-          <p style={{ fontSize: '0.875rem', color: '#64748b', textAlign: 'center', padding: '1rem' }}>
-            No open issues matching <strong>{ngoType}</strong> at this time.
-          </p>
+          <EmptyState title="No matching open issues" description={`No open issues for ${ngoType || 'your NGO category'} match these filters.`} />
         ) : (
+          <>
           <div className="reports-list">
             {availableIssues.map((issue) => (
               <div key={issue.id} className="report-item"
@@ -430,18 +449,19 @@ export default function NgoDashboard({ currentUser, onLogout }) {
               </div>
             ))}
           </div>
+          <PaginationControls pagination={availablePagination} onPageChange={(page) => setFilters({ page: String(page) })} />
+          </>
         )}
       </div>
 
       {/* ── My Accepted Issues ── */}
-      {acceptedIssues.length > 0 && (
-        <div className="card mt-3">
+      <div className="card mt-3">
           <div className="card-header" style={{ marginBottom: '0.5rem' }}>
             <h3 className="card-title" style={{ fontSize: '1.1rem' }}>My Accepted Issues</h3>
             <p className="card-subtitle">Issues your organisation has taken responsibility for</p>
           </div>
 
-          <div className="reports-list">
+          {issuesLoading ? <Skeleton lines={3} /> : acceptedIssues.length ? <div className="reports-list">
             {acceptedIssues.map((issue) => (
               <div key={issue.id} className="report-item"
                 style={{ flexDirection: 'column', alignItems: 'stretch', gap: '0.6rem' }}>
@@ -459,9 +479,9 @@ export default function NgoDashboard({ currentUser, onLogout }) {
                 <ProgressPanel issue={issue} ngoId={ngoId} onUpdated={loadIssues} />
               </div>
             ))}
-          </div>
-        </div>
-      )}
+          </div> : <EmptyState title="No accepted issues match" description="Your assigned issue list will reflect the current filters." />}
+          <PaginationControls pagination={acceptedPagination} onPageChange={(page) => setFilters({ page: String(page) })} />
+      </div>
 
       {/* ── Organisation Details + Sign Out ── */}
       <div className="card mt-3">

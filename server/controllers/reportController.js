@@ -3,6 +3,7 @@ const path = require('path');
 const { z } = require('zod');
 const reportsRepository = require('../db/reports');
 const { analyzeReport } = require('../services/aiAnalyzer');
+const { reportListQuerySchema } = require('../services/reportListQuery');
 
 const projectRoot = path.resolve(__dirname, '..', '..');
 
@@ -18,7 +19,6 @@ const reportStatusSchema = z.object({
   status: z.enum(['in_progress', 'resolved']),
   note: z.string().trim().max(300).optional(),
 });
-
 const validationMessage = (error) =>
   error.issues.map((issue) => issue.message).join(' ');
 
@@ -63,12 +63,20 @@ exports.create = async (req, res) => {
 };
 
 exports.list = async (req, res, next) => {
+  const parsedQuery = reportListQuerySchema.safeParse(req.query);
+  if (!parsedQuery.success) {
+    return res.status(400).json({
+      success: false,
+      message: validationMessage(parsedQuery.error),
+    });
+  }
   try {
-    const reports = await reportsRepository.getReports({
+    const result = await reportsRepository.getReports({
       userId: req.user.id,
       role: req.user.role,
+      ...parsedQuery.data,
     });
-    return res.json({ success: true, reports });
+    return res.json({ success: true, ...result });
   } catch (error) {
     return next(error);
   }

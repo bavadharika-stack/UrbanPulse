@@ -83,3 +83,27 @@ test('labels the weakest score and a short issue summary', () => {
   assert.equal(result.mainIssue, 'Cleanliness needs improvement');
   assert.equal(average([null, undefined]), null);
 });
+
+test('returns a contributing rating count and flags scores with fewer than three ratings', () => {
+  const result = scoreLocation({
+    location,
+    ratings: [
+      rating({ shade: null, water_availability: null }),
+      rating({ shade: 4, water_availability: null }),
+    ],
+  });
+  assert.deepEqual(result.scoreCounts, {
+    accessibility: 2,
+    walkability: 2,
+    safety: 2,
+    cleanliness: 2,
+    heatComfort: 1,
+    overall: 2,
+  });
+  assert.equal(result.confidence.safety, 'low');
+  assert.equal(result.confidence.heatComfort, 'low');
+  assert.equal(result.confidence.overall, 'low');
+  const wellRated = scoreLocation({ location, ratings: [rating(), rating(), rating()] });
+  assert.equal(wellRated.confidence.safety, 'normal');
+  assert.equal(wellRated.confidence.overall, 'normal');
+});
