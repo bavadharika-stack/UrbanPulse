@@ -3,9 +3,14 @@ const cors = require('cors');
 const config = require('./config');
 const userRepository = require('./db');
 const reportsRepository = require('./db/reports');
+const locationsRepository = require('./db/locations');
 const authRoutes = require('./routes/authRoutes');
 const reportRoutes = require('./routes/reportRoutes');
 const ngoRoutes = require('./routes/ngoRoutes');
+const locationRoutes = require('./routes/locationRoutes');
+const ratingRoutes = require('./routes/ratingRoutes');
+const scoreRoutes = require('./routes/scoreRoutes');
+const geocodeRoutes = require('./routes/geocodeRoutes');
 const { uploadDirectory } = require('./middleware/reportUpload');
 
 const app = express();
@@ -25,6 +30,10 @@ app.use('/uploads', express.static(uploadDirectory, {
 app.use('/api/auth', authRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/ngo', ngoRoutes);
+app.use('/api/locations', locationRoutes);
+app.use('/api/ratings', ratingRoutes);
+app.use('/api/scores', scoreRoutes);
+app.use('/api/geocode', geocodeRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -56,6 +65,8 @@ const startServer = async () => {
   await userRepository.seedDemoAccounts();
   const demoCitizen = await userRepository.findUserByEmail('demo@urbanpulse.com');
   await reportsRepository.seedDemoReports(demoCitizen.id);
+  await locationsRepository.seedChennaiPlaces();
+  await locationsRepository.seedDemoRatings(demoCitizen.id);
   app.listen(config.port, () => {
     console.log(`[UrbanPulse Server] Running on http://localhost:${config.port}`);
   });

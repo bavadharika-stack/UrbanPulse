@@ -8,6 +8,8 @@ import Dashboard from './modules/dashboard/Dashboard';
 import NgoDashboard from './modules/dashboard/NgoDashboard';
 import AuthorityDashboard from './modules/dashboard/AuthorityDashboard';
 import ImageUpload from './modules/image-upload/ImageUpload';
+import RatePlace from './modules/places/RatePlace';
+import PublicSpaceMap from './modules/places/PublicSpaceMap';
 import { getCurrentUser, logoutUser } from './api';
 
 export default function App() {
@@ -60,7 +62,7 @@ export default function App() {
   };
 
   const handleNavClick = (view) => {
-    if ((view === 'dashboard' || view === 'image-upload') && !currentUser) {
+    if (['dashboard', 'image-upload', 'rate-place', 'map'].includes(view) && !currentUser) {
       setCurrentView('login');
       return;
     }
@@ -72,7 +74,7 @@ export default function App() {
       setCurrentView('ngo-dashboard');
       return;
     }
-    if (view === 'image-upload' && currentUser?.role !== 'citizen') {
+    if (['image-upload', 'rate-place', 'map'].includes(view) && currentUser?.role !== 'citizen') {
       setCurrentView(getHomeView(currentUser));
       return;
     }
@@ -127,6 +129,8 @@ export default function App() {
               currentUser={currentUser}
               onLogout={handleLogout}
               onStartReport={() => setCurrentView('image-upload')}
+              onOpenMap={() => setCurrentView('map')}
+              onRatePlace={() => setCurrentView('rate-place')}
             />
           )}
 
@@ -134,6 +138,14 @@ export default function App() {
             <ImageUpload
               onBackToDashboard={() => setCurrentView('dashboard')}
             />
+          )}
+
+          {currentView === 'rate-place' && currentUser?.role === 'citizen' && (
+            <RatePlace onBack={() => setCurrentView('dashboard')} />
+          )}
+
+          {currentView === 'map' && currentUser?.role === 'citizen' && (
+            <PublicSpaceMap />
           )}
         </div>
       </main>

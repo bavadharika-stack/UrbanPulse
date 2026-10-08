@@ -39,6 +39,13 @@ const initDb = () => {
     CREATE TABLE IF NOT EXISTS locations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,
+      latitude REAL,
+      longitude REAL,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      is_user_added INTEGER NOT NULL DEFAULT 0 CHECK (is_user_added IN (0, 1)),
+      source TEXT NOT NULL DEFAULT 'seed' CHECK (source IN ('seed', 'user')),
+      status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'hidden')),
+      address TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -85,6 +92,47 @@ const initDb = () => {
         CHECK (status IN ('available', 'unavailable')),
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+  `);
+
+  const locationColumns = db.prepare('PRAGMA table_info(locations)').all().map((column) => column.name);
+  if (!locationColumns.includes('latitude')) db.exec('ALTER TABLE locations ADD COLUMN latitude REAL');
+  if (!locationColumns.includes('longitude')) db.exec('ALTER TABLE locations ADD COLUMN longitude REAL');
+  if (!locationColumns.includes('created_by')) {
+    db.exec('ALTER TABLE locations ADD COLUMN created_by INTEGER REFERENCES users(id) ON DELETE SET NULL');
+  }
+  if (!locationColumns.includes('is_user_added')) {
+    db.exec('ALTER TABLE locations ADD COLUMN is_user_added INTEGER NOT NULL DEFAULT 0 CHECK (is_user_added IN (0, 1))');
+  }
+  if (!locationColumns.includes('source')) {
+    db.exec("ALTER TABLE locations ADD COLUMN source TEXT NOT NULL DEFAULT 'seed' CHECK (source IN ('seed', 'user'))");
+  }
+  if (!locationColumns.includes('status')) {
+    db.exec("ALTER TABLE locations ADD COLUMN status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'hidden'))");
+  }
+  if (!locationColumns.includes('address')) db.exec('ALTER TABLE locations ADD COLUMN address TEXT');
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_locations_status ON locations(status);
+    CREATE INDEX IF NOT EXISTS idx_locations_creator_created ON locations(created_by, created_at);
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS ratings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      citizen_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      location_id INTEGER NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
+      cleanliness INTEGER NOT NULL CHECK (cleanliness BETWEEN 1 AND 5),
+      safety INTEGER NOT NULL CHECK (safety BETWEEN 1 AND 5),
+      lighting INTEGER NOT NULL CHECK (lighting BETWEEN 1 AND 5),
+      accessibility INTEGER NOT NULL CHECK (accessibility BETWEEN 1 AND 5),
+      seating INTEGER NOT NULL CHECK (seating BETWEEN 1 AND 5),
+      shade INTEGER CHECK (shade BETWEEN 1 AND 5),
+      water_availability INTEGER CHECK (water_availability BETWEEN 1 AND 5),
+      comment TEXT NOT NULL DEFAULT '',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_ratings_citizen_location_day
+      ON ratings (citizen_id, location_id, date(created_at));
+    CREATE INDEX IF NOT EXISTS idx_ratings_location_id ON ratings(location_id);
   `);
 
   const reportColumns = db.prepare('PRAGMA table_info(reports)').all().map((column) => column.name);

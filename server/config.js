@@ -9,6 +9,8 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters long.'),
   DB_PATH: z.string().min(1).default('urbanpulse.db'),
   FRONTEND_URL: z.string().url().default('http://localhost:3000'),
+  GEOCODER_USER_AGENT: z.string().trim().min(10).max(200)
+    .default('UrbanPulse/1.0 (civic public-space mapping)'),
   AI_PROVIDER: z.enum(['rules', 'gemini']).default('rules'),
   GEMINI_API_KEY: z.string().default(''),
   DEMO_CITIZEN_PASSWORD: z.string().min(6),
@@ -32,6 +34,7 @@ module.exports = {
     ? env.DB_PATH
     : path.resolve(projectRoot, env.DB_PATH),
   frontendUrl: env.FRONTEND_URL,
+  geocoderUserAgent: env.GEOCODER_USER_AGENT,
   aiProvider: env.AI_PROVIDER,
   geminiApiKey: env.GEMINI_API_KEY,
   demoPasswords: {

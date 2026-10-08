@@ -1,6 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AlertCircle, Building2, LogOut, RefreshCw } from 'lucide-react';
-import { getReports } from '../../api';
+import {
+  getLocationScores,
+  getPlacesForModeration,
+  getReports,
+  updatePlaceStatus,
+} from '../../api';
 import reportCategories from '../../../shared/reportCategories.json';
 
 const STATUS_LABELS = {
@@ -19,11 +24,16 @@ const PRIORITY_COLORS = {
 
 export default function AuthorityDashboard({ currentUser, onLogout }) {
   const [reports, setReports] = useState([]);
+  const [locationScores, setLocationScores] = useState([]);
+  const [citizenPlaces, setCitizenPlaces] = useState([]);
+  const [placeActionBusy, setPlaceActionBusy] = useState(null);
   const [departmentFilter, setDepartmentFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+  const [scoreError, setScoreError] = useState('');
+  const [placeModerationError, setPlaceModerationError] = useState('');
 
   const loadReports = async () => {
     setIsLoading(true);
@@ -37,7 +47,42 @@ export default function AuthorityDashboard({ currentUser, onLogout }) {
     }
   };
 
-  useEffect(() => { loadReports(); }, []);
+  const loadLocationScores = async () => {
+    setScoreError('');
+    try {
+      setLocationScores(await getLocationScores());
+    } catch (loadError) {
+      setScoreError(loadError.message);
+    }
+  };
+
+  const loadCitizenPlaces = async () => {
+    setPlaceModerationError('');
+    try {
+      setCitizenPlaces(await getPlacesForModeration());
+    } catch (loadError) {
+      setPlaceModerationError(loadError.message);
+    }
+  };
+
+  useEffect(() => {
+    loadReports();
+    loadLocationScores();
+    loadCitizenPlaces();
+  }, []);
+
+  const handlePlaceStatus = async (place, status) => {
+    setPlaceActionBusy(place.id);
+    setPlaceModerationError('');
+    try {
+      await updatePlaceStatus({ locationId: place.id, status });
+      await Promise.all([loadCitizenPlaces(), loadLocationScores()]);
+    } catch (actionError) {
+      setPlaceModerationError(actionError.message);
+    } finally {
+      setPlaceActionBusy(null);
+    }
+  };
 
   const departments = useMemo(
     () => [...new Set(reports.map((report) => report.department).filter(Boolean))].sort(),
@@ -79,6 +124,88 @@ export default function AuthorityDashboard({ currentUser, onLogout }) {
         <button type="button" className="btn btn-secondary btn-sm" onClick={onLogout}>
           <LogOut size={15} /><span>Sign Out</span>
         </button>
+      </div>
+
+      <div className="card mt-3">
+        <div className="card-header" style={{ marginBottom: '0.25rem' }}>
+          <h3 className="card-title" style={{ fontSize: '1.1rem' }}>Public-Space Scores by Location</h3>
+          <p className="card-subtitle">Lowest available score and the main improvement area for each place</p>
+        </div>
+        {scoreError && (
+          <div className="alert alert-error mt-2" role="alert">
+            <AlertCircle size={18} className="alert-icon" /><span>{scoreError}</span>
+          </div>
+        )}
+        <div className="score-table-wrap mt-2" role="region" aria-label="Public-space scores by location" tabIndex="0">
+          <table className="score-table">
+            <thead>
+              <tr>
+                <th scope="col">Location</th>
+                <th scope="col">Overall</th>
+                <th scope="col">Weakest score</th>
+                <th scope="col">Main issue</th>
+              </tr>
+            </thead>
+            <tbody>
+              {locationScores.map((place) => (
+                <tr key={place.id}>
+                  <th scope="row">{place.name}</th>
+                  <td>{place.scores.overall === null ? 'No data' : `${Math.round(place.scores.overall)}/100`}</td>
+                  <td>
+                    {place.weakestScore
+                      ? `${place.weakestScore.label}: ${place.weakestScore.value}/100`
+                      : 'No data'}
+                  </td>
+                  <td>{place.mainIssue}</td>
+                </tr>
+              ))}
+              {!locationScores.length && !scoreError && (
+                <tr><td colSpan="4">No location scores are available.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="card mt-3">
+        <div className="card-header" style={{ marginBottom: '0.25rem' }}>
+          <h3 className="card-title" style={{ fontSize: '1.1rem' }}>Citizen-added places</h3>
+          <p className="card-subtitle">Hide spam locations from citizens and the public map, or restore them.</p>
+        </div>
+        {placeModerationError && (
+          <div className="alert alert-error mt-2" role="alert">
+            <AlertCircle size={18} className="alert-icon" /><span>{placeModerationError}</span>
+          </div>
+        )}
+        <div className="reports-list">
+          {citizenPlaces.length === 0 && !placeModerationError ? (
+            <p className="card-subtitle" style={{ textAlign: 'center', padding: '1rem' }}>
+              No citizen-added places yet.
+            </p>
+          ) : citizenPlaces.map((place) => (
+            <article key={place.id} className="report-item citizen-place-row">
+              <div className="report-item-main" style={{ flex: 1, minWidth: 0 }}>
+                <span className="report-item-title">{place.name}</span>
+                <span className="report-item-location">
+                  {place.address || `${place.latitude.toFixed(5)}, ${place.longitude.toFixed(5)}`}
+                </span>
+                <span className={`status-badge ${place.status === 'active' ? 'status-badge-resolved' : 'status-badge-submitted'}`}>
+                  {place.status === 'active' ? 'Visible' : 'Hidden'}
+                </span>
+              </div>
+              <button
+                type="button"
+                className={`btn btn-sm ${place.status === 'active' ? 'btn-secondary' : 'btn-primary'}`}
+                disabled={placeActionBusy === place.id}
+                onClick={() => handlePlaceStatus(place, place.status === 'active' ? 'hidden' : 'active')}
+              >
+                {placeActionBusy === place.id
+                  ? 'Updating…'
+                  : place.status === 'active' ? 'Hide' : 'Restore'}
+              </button>
+            </article>
+          ))}
+        </div>
       </div>
 
       <div className="card mt-3">

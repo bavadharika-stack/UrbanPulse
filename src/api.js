@@ -111,6 +111,55 @@ export const getReports = async () => {
   return result.reports.map(normalizeReport);
 };
 
+export const getLocations = async () => {
+  const result = await request('/locations');
+  return result.locations;
+};
+
+export const searchPlaces = async (query) => {
+  const result = await request(`/geocode/search?q=${encodeURIComponent(query)}`);
+  return result.results;
+};
+
+export const createPlace = async (place) => {
+  const result = await request('/locations', {
+    method: 'POST',
+    body: JSON.stringify(place),
+  });
+  return result;
+};
+
+export const getPlacesForModeration = async () => {
+  const result = await request('/locations/moderation');
+  return result.locations;
+};
+
+export const updatePlaceStatus = async ({ locationId, status }) => {
+  const result = await request(`/locations/${encodeURIComponent(locationId)}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
+  return result.location;
+};
+
+export const submitPlaceRating = async (rating) => {
+  const result = await request('/ratings', {
+    method: 'POST',
+    body: JSON.stringify(rating),
+  });
+  return result.rating;
+};
+
+export const getLocationScores = async () => {
+  const result = await request('/scores');
+  return result.scores;
+};
+
+export const getLocationScore = async (locationId) => {
+  const result = await request(`/locations/${encodeURIComponent(locationId)}/scores`);
+  return result.score;
+};
+
 export const getReport = async (reportId) => {
   const result = await request(`/reports/${encodeURIComponent(reportId)}`);
   return normalizeReport(result.report);

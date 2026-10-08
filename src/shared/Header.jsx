@@ -20,6 +20,31 @@ export default function Header({ currentView, currentUser, onNavigate, onLogout 
         <nav className="header-nav">
           {currentUser ? (
             <div className="user-menu">
+              {currentUser.role === 'citizen' && (
+                <div className="nav-links">
+                  <button
+                    type="button"
+                    className={`nav-btn ${currentView === 'dashboard' ? 'nav-btn-active' : ''}`}
+                    onClick={() => onNavigate('dashboard')}
+                  >
+                    <span>Dashboard</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`nav-btn ${currentView === 'map' ? 'nav-btn-active' : ''}`}
+                    onClick={() => onNavigate('map')}
+                  >
+                    <span>Map</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`nav-btn ${currentView === 'rate-place' ? 'nav-btn-active' : ''}`}
+                    onClick={() => onNavigate('rate-place')}
+                  >
+                    <span>Rate a Place</span>
+                  </button>
+                </div>
+              )}
               <span className="user-badge">
                 <User size={14} />
                 <span>{currentUser.fullName}</span>

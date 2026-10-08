@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { User, LogOut, Camera, ArrowRight, MapPin, CheckCircle2, Clock, FileText, AlertCircle } from 'lucide-react';
+import { User, LogOut, Camera, ArrowRight, MapPin, CheckCircle2, Clock, FileText, AlertCircle, Map, Star } from 'lucide-react';
 import { getReports } from '../../api';
 
-export default function Dashboard({ currentUser, onLogout, onStartReport }) {
+export default function Dashboard({ currentUser, onLogout, onStartReport, onOpenMap, onRatePlace }) {
   const [reports, setReports] = useState([]);
   const [stats, setStats] = useState({ total: 0, underReview: 0, resolved: 0 });
   const [reportsError, setReportsError] = useState('');
@@ -106,6 +106,21 @@ export default function Dashboard({ currentUser, onLogout, onStartReport }) {
             <div className="stat-number" style={{ color: '#059669' }}>{stats.resolved}</div>
             <div className="stat-label">Resolved</div>
           </div>
+        </div>
+      </div>
+
+      <div className="card mt-3">
+        <div className="card-header" style={{ marginBottom: '0.25rem' }}>
+          <h3 className="card-title" style={{ fontSize: '1.1rem' }}>Explore and Rate Public Spaces</h3>
+          <p className="card-subtitle">See community scores across Chennai or add your experience.</p>
+        </div>
+        <div className="dashboard-actions mt-2">
+          <button type="button" className="btn btn-primary btn-sm" onClick={onOpenMap}>
+            <Map size={15} /><span>Open Place Map</span>
+          </button>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={onRatePlace}>
+            <Star size={15} /><span>Rate a Place</span>
+          </button>
         </div>
       </div>
 
