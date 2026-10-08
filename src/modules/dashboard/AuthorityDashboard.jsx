@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AlertCircle, Building2, LogOut, RefreshCw } from 'lucide-react';
 import { getReports } from '../../api';
+import reportCategories from '../../../shared/reportCategories.json';
 
 const STATUS_LABELS = {
   pending: 'Pending',
@@ -19,6 +20,7 @@ const PRIORITY_COLORS = {
 export default function AuthorityDashboard({ currentUser, onLogout }) {
   const [reports, setReports] = useState([]);
   const [departmentFilter, setDepartmentFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -47,8 +49,19 @@ export default function AuthorityDashboard({ currentUser, onLogout }) {
     return counts;
   }, { pending: 0, accepted: 0, in_progress: 0, resolved: 0 }), [reports]);
 
+  const categoryCounts = useMemo(() => reports.reduce((counts, report) => {
+    counts[report.category] = (counts[report.category] || 0) + 1;
+    return counts;
+  }, {}), [reports]);
+
+  const categories = useMemo(
+    () => [...new Set([...reportCategories, ...Object.keys(categoryCounts)])].sort(),
+    [categoryCounts],
+  );
+
   const filteredReports = reports.filter((report) => (
     (!departmentFilter || report.department === departmentFilter)
+    && (!categoryFilter || report.category === categoryFilter)
     && (!priorityFilter || report.priority === priorityFilter)
   ));
 
@@ -70,6 +83,33 @@ export default function AuthorityDashboard({ currentUser, onLogout }) {
 
       <div className="card mt-3">
         <div className="card-header" style={{ marginBottom: '0.25rem' }}>
+          <h3 className="card-title" style={{ fontSize: '1.1rem' }}>Reports by Category</h3>
+          <p className="card-subtitle">Select a category to view its citizen reports</p>
+        </div>
+        <div className="activity-stats-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(145px, 1fr))' }}>
+          {categories.map((category) => (
+            <button
+              type="button"
+              key={category}
+              className="stat-card"
+              aria-pressed={categoryFilter === category}
+              onClick={() => setCategoryFilter(categoryFilter === category ? '' : category)}
+              style={{
+                cursor: 'pointer',
+                border: categoryFilter === category ? '2px solid #0284c7' : undefined,
+                font: 'inherit',
+                textAlign: 'center',
+              }}
+            >
+              <div className="stat-number">{categoryCounts[category] || 0}</div>
+              <div className="stat-label">{category}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="card mt-3">
+        <div className="card-header" style={{ marginBottom: '0.25rem' }}>
           <h3 className="card-title" style={{ fontSize: '1.1rem' }}>Report Status Counts</h3>
           <p className="card-subtitle">All reports currently in the system</p>
         </div>
@@ -86,10 +126,22 @@ export default function AuthorityDashboard({ currentUser, onLogout }) {
       <div className="card mt-3">
         <div className="card-header" style={{ marginBottom: '0.25rem' }}>
           <h3 className="card-title" style={{ fontSize: '1.1rem' }}>All Reports</h3>
-          <p className="card-subtitle">Filter by assigned department or calculated priority</p>
+          <p className="card-subtitle">Filter by category, assigned department, or calculated priority</p>
         </div>
 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', marginTop: '0.85rem' }}>
+          <div className="form-group" style={{ flex: '1 1 220px', marginBottom: 0 }}>
+            <label className="form-label" htmlFor="authority-category-filter">Category</label>
+            <select
+              id="authority-category-filter"
+              className="form-control input-no-prefix"
+              value={categoryFilter}
+              onChange={(event) => setCategoryFilter(event.target.value)}
+            >
+              <option value="">All categories</option>
+              {categories.map((category) => <option key={category} value={category}>{category}</option>)}
+            </select>
+          </div>
           <div className="form-group" style={{ flex: '1 1 220px', marginBottom: 0 }}>
             <label className="form-label" htmlFor="authority-department-filter">Department</label>
             <select
@@ -146,6 +198,11 @@ export default function AuthorityDashboard({ currentUser, onLogout }) {
                 <span className="report-item-title">{report.title}</span>
                 <span className="report-item-location">{report.location}</span>
                 <span className="card-subtitle">{report.category} · {report.department || 'Unassigned'}</span>
+                {report.aiCategory && (
+                  <span className="card-subtitle">
+                    AI: {report.aiCategory} · {report.aiSeverity} severity · {report.aiSentiment} sentiment
+                  </span>
+                )}
                 {report.verified && (
                   <span className="status-badge status-badge-resolved" style={{ alignSelf: 'flex-start' }}>
                     NGO Verified

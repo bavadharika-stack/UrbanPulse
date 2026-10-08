@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { User, Building2, Mail, Lock, Eye, EyeOff, Tag, CheckCircle2, AlertCircle, ArrowRight } from 'lucide-react';
 import { registerAccount } from '../../api';
+import reportCategories from '../../../shared/reportCategories.json';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -430,12 +431,9 @@ export default function Registration({ onNavigateToLogin }) {
                   required
                 >
                   <option value="">Select NGO Type</option>
-                  <option value="Waste Management">Waste Management</option>
-                  <option value="Environment & Green Spaces">Environment & Green Spaces</option>
-                  <option value="Road & Infrastructure">Road & Infrastructure</option>
-                  <option value="Sanitation & Cleanliness">Sanitation & Cleanliness</option>
-                  <option value="Public Safety">Public Safety</option>
-                  <option value="Accessibility">Accessibility</option>
+                  {reportCategories.map((category) => (
+                    <option key={category} value={category}>{category}</option>
+                  ))}
                 </select>
               </div>
               {errors.ngoType && <div className="form-feedback">{errors.ngoType}</div>}

@@ -2,6 +2,7 @@ const fs = require('fs/promises');
 const path = require('path');
 const { z } = require('zod');
 const reportsRepository = require('../db/reports');
+const { analyzeReport } = require('../services/aiAnalyzer');
 
 const projectRoot = path.resolve(__dirname, '..', '..');
 
@@ -39,10 +40,12 @@ exports.create = async (req, res) => {
 
   const imagePath = path.relative(projectRoot, req.file.path).split(path.sep).join('/');
   try {
+    const aiAnalysis = await analyzeReport(parsed.data);
     const report = await reportsRepository.createReport({
       citizenId: req.user.id,
       ...parsed.data,
       imagePath,
+      aiAnalysis,
     });
     return res.status(201).json({
       success: true,

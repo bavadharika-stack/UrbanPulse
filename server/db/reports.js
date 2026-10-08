@@ -1,5 +1,6 @@
 const { db } = require('./index');
 const { calculatePriority, getDepartment } = require('../services/reportRules');
+const { analyzeWithRules } = require('../services/aiAnalyzer');
 
 const reportSelect = `
   SELECT
@@ -15,6 +16,11 @@ const reportSelect = `
     reports.sentiment,
     reports.department,
     reports.priority,
+    reports.ai_category AS aiCategory,
+    reports.ai_severity AS aiSeverity,
+    reports.ai_sentiment AS aiSentiment,
+    reports.ai_department AS aiDepartment,
+    reports.ai_provider AS aiProvider,
     reports.verified,
     reports.verified_by_ngo_id AS verifiedByNgoId,
     reports.verified_at AS verifiedAt,
@@ -95,14 +101,17 @@ const seedDemoReports = async (citizenId) => {
   seed();
 
   const existing = db.prepare(`
-    SELECT id, category, location_id, description, verified
+    SELECT id, title, category, location_id, description, verified
     FROM reports
   `).all();
   const updateClassification = db.prepare(`
-    UPDATE reports SET severity = ?, department = ?, priority = ? WHERE id = ?
+    UPDATE reports SET severity = ?, department = ?, priority = ?,
+      ai_category = ?, ai_severity = ?, ai_sentiment = ?, ai_department = ?, ai_provider = ?
+    WHERE id = ?
   `);
   const backfill = db.transaction(() => {
     for (const report of existing) {
+      const analysis = analyzeWithRules({ title: report.title, description: report.description });
       const sameLocationCount = db.prepare(`
         SELECT COUNT(*) AS count FROM reports WHERE location_id = ?
       `).get(report.location_id).count;
@@ -111,14 +120,33 @@ const seedDemoReports = async (citizenId) => {
         sameLocationCount,
         description: report.description,
         verified: Boolean(report.verified),
+        severity: analysis.severity,
       });
-      updateClassification.run(severity, getDepartment(report.category), priority, report.id);
+      updateClassification.run(
+        severity,
+        getDepartment(report.category),
+        priority,
+        analysis.category,
+        analysis.severity,
+        analysis.sentiment,
+        analysis.department,
+        'rules',
+        report.id,
+      );
     }
   });
   backfill();
 };
 
-const createReport = async ({ citizenId, location, title, category, description, imagePath }) => {
+const createReport = async ({
+  citizenId,
+  location,
+  title,
+  category,
+  description,
+  imagePath,
+  aiAnalysis,
+}) => {
   const save = db.transaction(() => {
     let locationRow = db.prepare('SELECT id FROM locations WHERE name = ? COLLATE NOCASE').get(location);
     if (!locationRow) {
@@ -133,13 +161,14 @@ const createReport = async ({ citizenId, location, title, category, description,
       category,
       sameLocationCount,
       description,
+      severity: aiAnalysis.severity,
     });
 
     const result = db.prepare(`
       INSERT INTO reports
         (citizen_id, location_id, location_name, title, category, description, image_path,
-         severity, department, priority)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         severity, department, priority, ai_category, ai_severity, ai_sentiment, ai_department, ai_provider)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       citizenId,
       locationRow.id,
@@ -151,6 +180,11 @@ const createReport = async ({ citizenId, location, title, category, description,
       severity,
       getDepartment(category),
       priority,
+      aiAnalysis.category,
+      aiAnalysis.severity,
+      aiAnalysis.sentiment,
+      aiAnalysis.department,
+      aiAnalysis.provider,
     );
 
     db.prepare(`
@@ -243,7 +277,7 @@ const updateReportStatus = async ({ id, ngoId, status, note }) => {
 const verifyReport = async ({ id, ngoId, ngoType }) => {
   const update = db.transaction(() => {
     const report = db.prepare(`
-      SELECT id, category, location_id, description, verified
+      SELECT id, category, location_id, description, ai_severity AS aiSeverity, verified
       FROM reports WHERE id = ?
     `).get(id);
     if (!report || report.verified) return null;
@@ -256,6 +290,7 @@ const verifyReport = async ({ id, ngoId, ngoType }) => {
       category: report.category,
       sameLocationCount,
       description: report.description,
+      severity: report.aiSeverity,
       verified: true,
     });
     db.prepare(`

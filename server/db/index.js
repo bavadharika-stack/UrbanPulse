@@ -97,6 +97,12 @@ const initDb = () => {
   if (!reportColumns.includes('verified_at')) {
     db.exec('ALTER TABLE reports ADD COLUMN verified_at DATETIME');
   }
+  const aiColumns = db.prepare('PRAGMA table_info(reports)').all().map((column) => column.name);
+  if (!aiColumns.includes('ai_category')) db.exec('ALTER TABLE reports ADD COLUMN ai_category TEXT');
+  if (!aiColumns.includes('ai_severity')) db.exec('ALTER TABLE reports ADD COLUMN ai_severity TEXT');
+  if (!aiColumns.includes('ai_sentiment')) db.exec('ALTER TABLE reports ADD COLUMN ai_sentiment TEXT');
+  if (!aiColumns.includes('ai_department')) db.exec('ALTER TABLE reports ADD COLUMN ai_department TEXT');
+  if (!aiColumns.includes('ai_provider')) db.exec('ALTER TABLE reports ADD COLUMN ai_provider TEXT');
 };
 
 initDb();

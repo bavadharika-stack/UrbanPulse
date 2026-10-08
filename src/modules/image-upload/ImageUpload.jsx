@@ -12,6 +12,7 @@ import {
   FileText,
 } from 'lucide-react';
 import { createReport } from '../../api';
+import reportCategories from '../../../shared/reportCategories.json';
 
 export default function ImageUpload({ onBackToDashboard }) {
   const [formData, setFormData] = useState({
@@ -357,12 +358,9 @@ export default function ImageUpload({ onBackToDashboard }) {
               required
             >
               <option value="">— Select a category —</option>
-              <option value="Waste Management">Waste Management</option>
-              <option value="Environment &amp; Green Spaces">Environment &amp; Green Spaces</option>
-              <option value="Road &amp; Infrastructure">Road &amp; Infrastructure</option>
-              <option value="Sanitation &amp; Cleanliness">Sanitation &amp; Cleanliness</option>
-              <option value="Public Safety">Public Safety</option>
-              <option value="Accessibility">Accessibility</option>
+              {reportCategories.map((category) => (
+                <option key={category} value={category}>{category}</option>
+              ))}
             </select>
             {errors.category && <div className="form-feedback">{errors.category}</div>}
           </div>

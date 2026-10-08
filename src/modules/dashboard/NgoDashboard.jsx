@@ -74,15 +74,22 @@ function IssueImage({ issue }) {
 
 function IssueMeta({ issue }) {
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.8rem', color: '#0284c7', fontWeight: 500 }}>
-        <Tag size={12} /> {issue.category}
-      </span>
-      <span className="report-item-location">
-        <MapPin size={13} style={{ color: '#0284c7', flexShrink: 0 }} />
-        <span>{issue.location}</span>
-      </span>
-    </div>
+    <>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.8rem', color: '#0284c7', fontWeight: 500 }}>
+          <Tag size={12} /> {issue.category}
+        </span>
+        <span className="report-item-location">
+          <MapPin size={13} style={{ color: '#0284c7', flexShrink: 0 }} />
+          <span>{issue.location}</span>
+        </span>
+      </div>
+      {issue.aiCategory && (
+        <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.78rem', color: '#64748b' }}>
+          AI analysis: {issue.aiCategory} · {issue.aiSeverity} severity · {issue.aiSentiment} sentiment
+        </span>
+      )}
+    </>
   );
 }
 
