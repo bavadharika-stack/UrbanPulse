@@ -11,6 +11,8 @@ const locationRoutes = require('./routes/locationRoutes');
 const ratingRoutes = require('./routes/ratingRoutes');
 const scoreRoutes = require('./routes/scoreRoutes');
 const geocodeRoutes = require('./routes/geocodeRoutes');
+const adminRoutes = require('./routes/adminRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
 const { uploadDirectory } = require('./middleware/reportUpload');
 
 const app = express();
@@ -34,6 +36,8 @@ app.use('/api/locations', locationRoutes);
 app.use('/api/ratings', ratingRoutes);
 app.use('/api/scores', scoreRoutes);
 app.use('/api/geocode', geocodeRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -62,11 +66,15 @@ app.use((error, req, res, next) => {
 });
 
 const startServer = async () => {
-  await userRepository.seedDemoAccounts();
-  const demoCitizen = await userRepository.findUserByEmail('demo@urbanpulse.com');
-  await reportsRepository.seedDemoReports(demoCitizen.id);
-  await locationsRepository.seedChennaiPlaces();
-  await locationsRepository.seedDemoRatings(demoCitizen.id);
+  if (config.seedDemoAccounts || config.seedDemoData) {
+    await userRepository.seedDemoAccounts();
+  }
+  if (config.seedDemoData) {
+    const demoCitizen = await userRepository.findUserByEmail('demo@urbanpulse.com');
+    await reportsRepository.seedDemoReports(demoCitizen.id);
+    await locationsRepository.seedChennaiPlaces();
+    await locationsRepository.seedDemoRatings(demoCitizen.id);
+  }
   app.listen(config.port, () => {
     console.log(`[UrbanPulse Server] Running on http://localhost:${config.port}`);
   });

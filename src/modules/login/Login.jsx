@@ -6,6 +6,7 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function Login({ initialEmail = '', onLoginSuccess, onNavigateToRegister }) {
   const [formData, setFormData] = useState({
+    role: 'citizen',
     email: initialEmail || '',
     password: '',
   });
@@ -59,6 +60,7 @@ export default function Login({ initialEmail = '', onLoginSuccess, onNavigateToR
     setIsLoading(true);
     try {
       const result = await loginAccount({
+        role: formData.role,
         email: formData.email,
         password: formData.password,
       });
@@ -76,7 +78,7 @@ export default function Login({ initialEmail = '', onLoginSuccess, onNavigateToR
         <div className="card-header">
           <h2 className="card-title">Sign In to UrbanPulse</h2>
           <p className="card-subtitle">
-            Access the citizen reporting portal to submit and manage public space feedback.
+            Choose your portal and sign in with the account created for that role.
           </p>
         </div>
 
@@ -88,6 +90,23 @@ export default function Login({ initialEmail = '', onLoginSuccess, onNavigateToR
         )}
 
         <form onSubmit={handleSubmit} noValidate>
+          <div className="form-group">
+            <label htmlFor="login-role" className="form-label">Portal</label>
+            <select
+              id="login-role"
+              name="role"
+              className="form-control input-no-prefix"
+              value={formData.role}
+              onChange={handleChange}
+              disabled={isLoading}
+            >
+              <option value="citizen">Citizen</option>
+              <option value="ngo">NGO</option>
+              <option value="authority">Authority</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+
           {/* Email */}
           <div className="form-group">
             <label htmlFor="login-email" className="form-label">
@@ -169,7 +188,9 @@ export default function Login({ initialEmail = '', onLoginSuccess, onNavigateToR
 
           {/* Quick Demo Credentials Tip */}
           <div className="demo-credentials-card">
-            <strong>Demo account:</strong> <code>demo@urbanpulse.com</code> / <code>Set in .env</code>
+            <strong>Separate accounts:</strong> Choose the portal matching your account.
+            {formData.role === 'authority' && ' Demo Authority uses authority@urbanpulse.com and the server DEMO_AUTHORITY_PASSWORD; SEED_DEMO_ACCOUNTS must be enabled.'}
+            {formData.role === 'admin' && ' Admin uses ADMIN_EMAIL (default admin@urbanpulse.com) and DEMO_ADMIN_PASSWORD; admin seeding also requires SEED_DEMO_DATA=true.'}
           </div>
 
           {/* Link to Register */}

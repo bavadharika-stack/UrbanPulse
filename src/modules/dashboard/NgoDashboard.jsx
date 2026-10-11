@@ -11,6 +11,7 @@ import {
   setNgoAvailability,
   updateReportStatus,
   verifyReport,
+  performAuthorityAction,
 } from '../../api';
 import useUrlFilters from '../../shared/useUrlFilters';
 import { Badge, EmptyState, Skeleton } from '../../shared/ui';
@@ -234,6 +235,7 @@ export default function NgoDashboard({ currentUser, onLogout }) {
   const [filters, setFilters] = useUrlFilters(DEFAULT_FILTERS);
   const [availablePagination, setAvailablePagination] = useState(null);
   const [acceptedPagination, setAcceptedPagination] = useState(null);
+  const [flagReasons, setFlagReasons] = useState({});
   const issuesRequestId = useRef(0);
 
   const isAvailable = availability === 'available';
@@ -321,6 +323,17 @@ export default function NgoDashboard({ currentUser, onLogout }) {
     }
   };
 
+  const handleFlagReport = async (reportId) => {
+    setIssuesError('');
+    try {
+      await performAuthorityAction({ reportId, action: 'flag', reason: flagReasons[reportId] || '' });
+      setFlagReasons((current) => ({ ...current, [reportId]: '' }));
+      await loadIssues();
+    } catch (error) {
+      setIssuesError(error.message);
+    }
+  };
+
   // ── render ──────────────────────────────────────────────────────────────────
 
   return (
@@ -348,6 +361,11 @@ export default function NgoDashboard({ currentUser, onLogout }) {
         {issuesError && (
           <div className="alert alert-error" role="alert">
             <span>{issuesError}</span>
+          </div>
+        )}
+        {currentUser?.status === 'pending' && (
+          <div className="alert alert-warning" role="status">
+            Your NGO application is pending admin approval. You can sign in, but cannot accept or verify reports until approved.
           </div>
         )}
 
@@ -423,12 +441,22 @@ export default function NgoDashboard({ currentUser, onLogout }) {
                   <button
                     type="button"
                     className="btn btn-secondary btn-sm"
-                    disabled={verifying === issue.id}
+                    disabled={currentUser?.status !== 'active' || verifying === issue.id}
                     onClick={() => handleVerify(issue.id)}
                   >
                     {verifying === issue.id ? 'Verifying…' : 'Verify Issue'}
                   </button>
                 )}
+                <div className="fake-flag-controls">
+                  <input className="form-control input-no-prefix" maxLength={500}
+                    aria-label={`Reason to flag report ${issue.id}`}
+                    placeholder="Reason to flag as fake"
+                    value={flagReasons[issue.id] || ''}
+                    onChange={(event) => setFlagReasons((current) => ({ ...current, [issue.id]: event.target.value }))} />
+                  <button type="button" className="btn btn-secondary btn-sm"
+                    disabled={currentUser?.status !== 'active' || issue.fakeFlagged === 1 || (flagReasons[issue.id] || '').trim().length < 5}
+                    onClick={() => handleFlagReport(issue.id)}>Flag as fake</button>
+                </div>
                 <p style={{ margin: 0, fontSize: '0.8125rem', color: '#475569', lineHeight: 1.5 }}>
                   {issue.description}
                 </p>
@@ -438,7 +466,7 @@ export default function NgoDashboard({ currentUser, onLogout }) {
                     type="button"
                     id={`btn-accept-${issue.id}`}
                     className="btn btn-primary btn-sm"
-                    disabled={accepting === issue.id}
+                    disabled={currentUser?.status !== 'active' || accepting === issue.id}
                     onClick={() => handleAccept(issue.id)}
                   >
                     {accepting === issue.id
@@ -470,6 +498,7 @@ export default function NgoDashboard({ currentUser, onLogout }) {
                   <StatusBadge status={issue.status} />
                 </div>
                 <IssueMeta issue={issue} />
+                {issue.fakeFlagged === 1 && <Badge tone="score-red">Flagged as fake</Badge>}
                 <p style={{ margin: 0, fontSize: '0.8125rem', color: '#475569', lineHeight: 1.5 }}>
                   {issue.description}
                 </p>

@@ -1,8 +1,36 @@
 import React from 'react';
-import { Activity, LogIn, UserPlus, LogOut, User, Menu, Moon, Sun, X } from 'lucide-react';
+import { Activity, LogIn, UserPlus, LogOut, User, Menu, Moon, Sun, X, Bell } from 'lucide-react';
+import { getNotifications, markNotificationRead } from '../api';
 
 export default function Header({ currentView, currentUser, onNavigate, onLogout, theme, onToggleTheme }) {
+  const portalNames = {
+    citizen: 'Citizen Portal',
+    ngo: 'NGO Portal',
+    authority: 'Authority Portal',
+    admin: 'Admin Portal',
+  };
   const [menuOpen, setMenuOpen] = React.useState(false);
+  const [notificationsOpen, setNotificationsOpen] = React.useState(false);
+  const [notifications, setNotifications] = React.useState([]);
+  const [unreadCount, setUnreadCount] = React.useState(0);
+  const [notificationError, setNotificationError] = React.useState('');
+  const loadNotifications = React.useCallback(async () => {
+    if (!currentUser) return;
+    try {
+      const result = await getNotifications();
+      setNotifications(result.notifications);
+      setUnreadCount(result.unreadCount);
+      setNotificationError('');
+    } catch (error) {
+      setNotificationError(error.message);
+    }
+  }, [currentUser]);
+  React.useEffect(() => {
+    loadNotifications();
+    if (!currentUser) return undefined;
+    const timer = window.setInterval(loadNotifications, 30000);
+    return () => window.clearInterval(timer);
+  }, [currentUser, loadNotifications]);
   const navigate = (view) => {
     onNavigate(view);
     setMenuOpen(false);
@@ -17,7 +45,7 @@ export default function Header({ currentView, currentUser, onNavigate, onLogout,
           </div>
           <div className="brand-info">
             <span className="brand-name">UrbanPulse</span>
-            <span className="brand-desc">Citizen Portal</span>
+            <span className="brand-desc">{portalNames[currentUser?.role] || 'Civic Services Portal'}</span>
           </div>
         </button>
 
@@ -61,6 +89,12 @@ export default function Header({ currentView, currentUser, onNavigate, onLogout,
                   </button>
                 </div>
               )}
+              {currentUser.role === 'admin' && (
+                <div className="nav-links">
+                  <button type="button" className={`nav-btn ${currentView === 'admin-dashboard' ? 'nav-btn-active' : ''}`}
+                    onClick={() => navigate('admin-dashboard')}><span>Admin</span></button>
+                </div>
+              )}
               <span className="user-badge">
                 <User size={14} />
                 <span>{currentUser.fullName}</span>
@@ -73,6 +107,50 @@ export default function Header({ currentView, currentUser, onNavigate, onLogout,
                 <LogOut size={14} />
                 <span>Sign Out</span>
               </button>
+              <div className="notification-menu">
+                <button
+                  type="button"
+                  className="icon-button notification-toggle"
+                  aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ''}`}
+                  aria-expanded={notificationsOpen}
+                  onClick={() => { setNotificationsOpen((open) => !open); if (!notificationsOpen) loadNotifications(); }}
+                >
+                  <Bell size={18} />
+                  {unreadCount > 0 && <span className="notification-count">{unreadCount > 99 ? '99+' : unreadCount}</span>}
+                </button>
+                {notificationsOpen && (
+                  <section className="notification-dropdown" aria-label="Notifications">
+                    <div className="notification-heading">
+                      <strong>Notifications</strong>
+                      <button type="button" className="link-button" onClick={loadNotifications}>Refresh</button>
+                    </div>
+                    {notificationError && <p className="notification-error" role="alert">{notificationError}</p>}
+                    {!notifications.length && !notificationError
+                      ? <p className="card-subtitle">You’re all caught up.</p>
+                      : notifications.map((item) => (
+                        <button
+                          type="button"
+                          key={item.id}
+                          className={`notification-item${item.isRead ? '' : ' notification-unread'}`}
+                          onClick={async () => {
+                            if (!item.isRead) {
+                              try {
+                                setUnreadCount(await markNotificationRead(item.id));
+                                setNotifications((items) => items.map((current) => current.id === item.id ? { ...current, isRead: 1 } : current));
+                              } catch (error) {
+                                setNotificationError(error.message);
+                              }
+                            }
+                          }}
+                        >
+                          <strong>{item.title}</strong>
+                          <span>{item.message}</span>
+                          <time>{new Date(item.createdAt).toLocaleString()}</time>
+                        </button>
+                      ))}
+                  </section>
+                )}
+              </div>
             </div>
           ) : (
             <div className="nav-links">

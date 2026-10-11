@@ -21,7 +21,7 @@ router.get('/:id/scores', locationController.getLocationScores);
 router.patch(
   '/:id/status',
   authenticateToken,
-  authorizeRoles('authority'),
+  authorizeRoles('authority', 'admin'),
   locationController.updatePlaceStatus,
 );
 

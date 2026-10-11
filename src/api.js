@@ -172,6 +172,11 @@ export const getReport = async (reportId) => {
   return normalizeReport(result.report);
 };
 
+export const getReportHistory = async (reportId) => {
+  const result = await request(`/reports/${encodeURIComponent(reportId)}/history`);
+  return result.events;
+};
+
 export const acceptReport = async (reportId) => {
   const result = await request(`/reports/${encodeURIComponent(reportId)}/accept`, {
     method: 'POST',
@@ -205,4 +210,60 @@ export const setNgoAvailability = async (status) => {
     body: JSON.stringify({ status }),
   });
   return result.status;
+};
+
+export const getNotifications = async () => request('/notifications?page=1&pageSize=20');
+
+export const markNotificationRead = async (notificationId) => {
+  const result = await request(`/notifications/${encodeURIComponent(notificationId)}/read`, { method: 'PATCH' });
+  return result.unreadCount;
+};
+
+export const getAdminUsers = async (filters = {}) => {
+  const params = new URLSearchParams(filters);
+  const result = await request(`/admin/users${params.size ? `?${params}` : ''}`);
+  return result.users;
+};
+
+export const updateAdminUserStatus = async ({ userId, status }) => {
+  const result = await request(`/admin/users/${encodeURIComponent(userId)}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
+  return result.user;
+};
+
+export const getAdminLocations = async () => {
+  const result = await request('/admin/locations');
+  return result.locations;
+};
+
+export const getAuditLog = async (filters = {}) => {
+  const params = new URLSearchParams(filters);
+  return request(`/admin/audit${params.size ? `?${params}` : ''}`);
+};
+
+export const updateLocationStatus = async ({ locationId, status }) => {
+  const result = await request(`/admin/locations/${encodeURIComponent(locationId)}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
+  return result.location;
+};
+
+export const performAuthorityAction = async ({ reportId, action, ...body }) => {
+  const paths = {
+    assign: ['PATCH', 'department'],
+    priority: ['PATCH', 'priority'],
+    respond: ['POST', 'response'],
+    resolve: ['POST', 'resolve'],
+    flag: ['POST', 'flag-fake'],
+  };
+  const [method, path] = paths[action] || [];
+  if (!method) throw new Error('Unknown report action.');
+  const result = await request(`/reports/${encodeURIComponent(reportId)}/${path}`, {
+    method,
+    body: JSON.stringify(body),
+  });
+  return normalizeReport(result.report);
 };

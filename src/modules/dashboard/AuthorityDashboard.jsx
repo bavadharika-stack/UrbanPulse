@@ -4,11 +4,13 @@ import {
   getLocationScores,
   getPlacesForModeration,
   getReports,
+  getReportHistory,
   updatePlaceStatus,
+  performAuthorityAction,
 } from '../../api';
 import reportCategories from '../../../shared/reportCategories.json';
 import useUrlFilters from '../../shared/useUrlFilters';
-import { Badge, EmptyState, Skeleton } from '../../shared/ui';
+import { Badge, EmptyState, FormField, Skeleton } from '../../shared/ui';
 import { PaginationControls, ReportFilters } from '../../shared/ReportFilters';
 
 const DEFAULT_FILTERS = {
@@ -43,6 +45,18 @@ export default function AuthorityDashboard({ currentUser, onLogout }) {
   const [error, setError] = useState('');
   const [scoreError, setScoreError] = useState('');
   const [placeModerationError, setPlaceModerationError] = useState('');
+  const [actionDrafts, setActionDrafts] = useState({});
+  const [actionBusy, setActionBusy] = useState(null);
+  const [reportHistory, setReportHistory] = useState({});
+  const departmentOptions = [...new Set([
+    'Sanitation Department',
+    'Public Safety Department',
+    'Electrical Department',
+    'Roads Department',
+    'Public Infrastructure Department',
+    'Parks Department',
+    'Public Works Department',
+  ])];
   const reportsRequestId = useRef(0);
 
   const loadReports = async (query = filters) => {
@@ -101,6 +115,45 @@ export default function AuthorityDashboard({ currentUser, onLogout }) {
       setPlaceModerationError(actionError.message);
     } finally {
       setPlaceActionBusy(null);
+    }
+  };
+
+  const updateDraft = (reportId, key, value) => {
+    setActionDrafts((current) => ({
+      ...current,
+      [reportId]: { ...current[reportId], [key]: value },
+    }));
+  };
+
+  const runReportAction = async (report, action, body = {}) => {
+    setActionBusy(`${report.id}-${action}`);
+    setError('');
+    try {
+      const updated = await performAuthorityAction({ reportId: report.id, action, ...body });
+      setReports((items) => items.map((item) => item.id === report.id ? updated : item));
+      updateDraft(report.id, action === 'priority' ? 'priorityReason' : action === 'respond' ? 'response' : 'reason', '');
+      await loadReports(filters);
+    } catch (actionError) {
+      setError(actionError.message);
+    } finally {
+      setActionBusy(null);
+    }
+  };
+
+  const toggleReportHistory = async (reportId) => {
+    if (reportHistory[reportId]) {
+      setReportHistory((current) => ({ ...current, [reportId]: null }));
+      return;
+    }
+    setActionBusy(`${reportId}-history`);
+    setError('');
+    try {
+      const events = await getReportHistory(reportId);
+      setReportHistory((current) => ({ ...current, [reportId]: events }));
+    } catch (historyError) {
+      setError(historyError.message);
+    } finally {
+      setActionBusy(null);
     }
   };
 
@@ -319,6 +372,75 @@ export default function AuthorityDashboard({ currentUser, onLogout }) {
                 <Badge tone={report.status === 'resolved' ? 'score-green' : report.status === 'in_progress' ? 'score-yellow' : 'status'}>
                   {STATUS_LABELS[report.status] || report.status}
                 </Badge>
+              </div>
+              {report.fakeFlagged === 1 && (
+                <Badge tone="score-red" className="fake-report-badge">Flagged as fake · priority reduced</Badge>
+              )}
+              <div className="authority-report-actions">
+                <FormField label="Department" htmlFor={`assign-${report.id}`}>
+                  <select id={`assign-${report.id}`} className="form-control input-no-prefix"
+                    value={actionDrafts[report.id]?.department ?? report.department ?? ''}
+                    onChange={(event) => updateDraft(report.id, 'department', event.target.value)}>
+                    <option value="">Choose department</option>
+                    {departmentOptions.map((department) => <option value={department} key={department}>{department}</option>)}
+                  </select>
+                  <button type="button" className="btn btn-secondary btn-sm mt-1"
+                    disabled={!actionDrafts[report.id]?.department || actionBusy === `${report.id}-assign`}
+                    onClick={() => runReportAction(report, 'assign', { department: actionDrafts[report.id].department })}>Assign</button>
+                </FormField>
+                <FormField label="Priority (reason required)" htmlFor={`priority-${report.id}`}>
+                  <select id={`priority-${report.id}`} className="form-control input-no-prefix"
+                    value={actionDrafts[report.id]?.priority ?? report.priority ?? 'medium'}
+                    onChange={(event) => updateDraft(report.id, 'priority', event.target.value)}>
+                    {['low', 'medium', 'high', 'critical'].map((priority) => <option value={priority} key={priority}>{priority}</option>)}
+                  </select>
+                  <input className="form-control input-no-prefix mt-1" aria-label={`Reason for priority change on report ${report.id}`}
+                    maxLength={500} placeholder="Explain the priority change"
+                    value={actionDrafts[report.id]?.priorityReason || ''}
+                    onChange={(event) => updateDraft(report.id, 'priorityReason', event.target.value)} />
+                  <button type="button" className="btn btn-secondary btn-sm mt-1"
+                    disabled={(actionDrafts[report.id]?.priorityReason || '').trim().length < 5 || actionBusy === `${report.id}-priority`}
+                    onClick={() => runReportAction(report, 'priority', {
+                      priority: actionDrafts[report.id]?.priority || report.priority || 'medium',
+                      reason: actionDrafts[report.id].priorityReason,
+                    })}>Update priority</button>
+                </FormField>
+                <FormField label="Public response" htmlFor={`response-${report.id}`}>
+                  <textarea id={`response-${report.id}`} className="form-control input-no-prefix" rows={2} maxLength={2000}
+                    value={actionDrafts[report.id]?.response || ''} placeholder="Response visible to the citizen"
+                    onChange={(event) => updateDraft(report.id, 'response', event.target.value)} />
+                  <button type="button" className="btn btn-secondary btn-sm mt-1"
+                    disabled={(actionDrafts[report.id]?.response || '').trim().length < 3 || actionBusy === `${report.id}-respond`}
+                    onClick={() => runReportAction(report, 'respond', { response: actionDrafts[report.id].response })}>Send response</button>
+                </FormField>
+                <div className="authority-action-buttons">
+                  <button type="button" className="btn btn-secondary btn-sm"
+                    disabled={actionBusy === `${report.id}-history`}
+                    onClick={() => toggleReportHistory(report.id)}>
+                    {reportHistory[report.id] ? 'Hide history' : 'View history'}
+                  </button>
+                  <button type="button" className="btn btn-primary btn-sm"
+                    disabled={report.status === 'resolved' || actionBusy === `${report.id}-resolve`}
+                    onClick={() => runReportAction(report, 'resolve')}>Mark resolved</button>
+                  <button type="button" className="btn btn-secondary btn-sm"
+                    disabled={report.fakeFlagged === 1 || (actionDrafts[report.id]?.reason || '').trim().length < 5 || actionBusy === `${report.id}-flag`}
+                    onClick={() => runReportAction(report, 'flag', { reason: actionDrafts[report.id]?.reason })}>Flag as fake</button>
+                  <input aria-label={`Reason to flag report ${report.id}`} className="form-control input-no-prefix"
+                    maxLength={500} placeholder="Reason to flag as fake"
+                    value={actionDrafts[report.id]?.reason || ''}
+                    onChange={(event) => updateDraft(report.id, 'reason', event.target.value)} />
+                </div>
+                {reportHistory[report.id] && (
+                  <ol className="report-history">
+                    {reportHistory[report.id].map((event) => (
+                      <li key={event.id}>
+                        <strong>{event.eventType.replaceAll('_', ' ')}</strong>
+                        <span>{event.details}</span>
+                        <small>{event.actorName} · {new Date(event.createdAt).toLocaleString()}</small>
+                      </li>
+                    ))}
+                  </ol>
+                )}
               </div>
             </article>
           ))}

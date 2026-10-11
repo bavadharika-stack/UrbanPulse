@@ -1,6 +1,7 @@
 const { db } = require('./index');
 const { scoreLocation } = require('../services/scoreEngine');
 const { canAddPlaceToday, findDuplicatePlace } = require('../services/placeRules');
+const { DAILY_RATING_LIMIT, isDailyLimitReached } = require('../services/trustRules');
 
 const CHENNAI_PLACES = [
   { name: 'Anna Nagar Park', latitude: 13.085, longitude: 80.2101 },
@@ -114,7 +115,7 @@ const getScores = async () => {
     FROM ratings
   `).all();
   const reports = db.prepare(`
-    SELECT location_id AS locationId, category, status, verified
+    SELECT location_id AS locationId, category, status, verified, fake_flagged AS fakeFlagged
     FROM reports
   `).all();
 
@@ -141,15 +142,27 @@ const createRating = async ({ citizenId, locationId, ...rating }) => {
     rating.waterAvailability ?? null, rating.comment || '',
   ];
   const placeholders = columns.map(() => '?').join(', ');
-  const result = db.prepare(`
-    INSERT INTO ratings (${columns.join(', ')}) VALUES (${placeholders})
-  `).run(...values);
+  const create = db.transaction(() => {
+    const todayCount = db.prepare(`
+      SELECT COUNT(*) AS count FROM ratings WHERE citizen_id = ? AND date(created_at) = date('now')
+    `).get(citizenId).count;
+    if (isDailyLimitReached(todayCount, DAILY_RATING_LIMIT)) {
+      const limitError = new Error('Daily rating limit reached.');
+      limitError.code = 'RATING_DAILY_LIMIT';
+      throw limitError;
+    }
+    const result = db.prepare(`
+      INSERT INTO ratings (${columns.join(', ')}) VALUES (${placeholders})
+    `).run(...values);
+    return result.lastInsertRowid;
+  });
+  const ratingId = create();
   return db.prepare(`
     SELECT id, citizen_id AS citizenId, location_id AS locationId,
       cleanliness, safety, lighting, accessibility, seating, shade,
       water_availability AS waterAvailability, comment, created_at AS createdAt
     FROM ratings WHERE id = ?
-  `).get(result.lastInsertRowid);
+  `).get(ratingId);
 };
 
 const createPlace = async ({ citizenId, name, latitude, longitude, address = '' }) => {
@@ -197,12 +210,22 @@ const createPlace = async ({ citizenId, name, latitude, longitude, address = '' 
   return create({ citizenId, name, latitude, longitude, address });
 };
 
-const updatePlaceStatus = async ({ locationId, status }) => {
+const updatePlaceStatus = async ({ locationId, status, actorId, allowSeeded = false }) => {
   const result = db.prepare(`
     UPDATE locations SET status = ?
-    WHERE id = ? AND is_user_added = 1
+    WHERE id = ? ${allowSeeded ? '' : 'AND is_user_added = 1'}
   `).run(status, locationId);
   if (!result.changes) return null;
+  if (actorId) {
+    const { recordAudit } = require('./engagement');
+    recordAudit({
+      actorId,
+      action: status === 'hidden' ? 'place_hidden' : 'place_restored',
+      recordType: 'location',
+      recordId: locationId,
+      details: `Location ${status}`,
+    });
+  }
   return db.prepare(`${LOCATION_FIELDS} WHERE id = ?`).get(locationId);
 };
 

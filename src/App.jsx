@@ -10,6 +10,7 @@ import AuthorityDashboard from './modules/dashboard/AuthorityDashboard';
 import ImageUpload from './modules/image-upload/ImageUpload';
 import RatePlace from './modules/places/RatePlace';
 import PublicSpaceMap from './modules/places/PublicSpaceMap';
+import AdminDashboard from './modules/dashboard/AdminDashboard';
 import { getCurrentUser, logoutUser } from './api';
 import { ToastProvider } from './shared/ui';
 
@@ -37,6 +38,7 @@ export default function App() {
   }, [theme]);
 
   const getHomeView = (user) => {
+    if (user?.role === 'admin') return 'admin-dashboard';
     if (user?.role === 'ngo') return 'ngo-dashboard';
     if (user?.role === 'authority') return 'authority-dashboard';
     return 'dashboard';
@@ -86,6 +88,10 @@ export default function App() {
     }
     if (currentUser?.role === 'authority' && (view === 'dashboard' || view === 'image-upload')) {
       setCurrentView('authority-dashboard');
+      return;
+    }
+    if (currentUser?.role === 'admin' && view === 'dashboard') {
+      setCurrentView('admin-dashboard');
       return;
     }
     if (currentUser?.role === 'ngo' && view === 'dashboard') {
@@ -143,6 +149,9 @@ export default function App() {
 
           {currentView === 'authority-dashboard' && (
             <AuthorityDashboard currentUser={currentUser} onLogout={handleLogout} />
+          )}
+          {currentView === 'admin-dashboard' && currentUser?.role === 'admin' && (
+            <AdminDashboard currentUser={currentUser} />
           )}
 
           {currentView === 'dashboard' && (

@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const config = require('../config');
 const userRepository = require('../db');
+const { hasRolePermission, canPerformReportAction } = require('../services/trustRules');
 
 const authenticateToken = async (req, res, next) => {
   const authorization = req.get('authorization') || '';
@@ -28,6 +29,12 @@ const authenticateToken = async (req, res, next) => {
         message: 'The account for this token no longer exists.',
       });
     }
+    if (user.status === 'deactivated' || user.status === 'rejected') {
+      return res.status(403).json({
+        success: false,
+        message: 'This account is not active. Contact an administrator for assistance.',
+      });
+    }
     req.user = user;
     return next();
   } catch (error) {
@@ -48,7 +55,7 @@ const authorizeRoles = (...roles) => (req, res, next) => {
       message: 'Authentication is required.',
     });
   }
-  if (!roles.includes(req.user.role)) {
+  if (!hasRolePermission(req.user, roles)) {
     return res.status(403).json({
       success: false,
       message: 'You do not have permission to access this resource.',
@@ -57,4 +64,14 @@ const authorizeRoles = (...roles) => (req, res, next) => {
   return next();
 };
 
-module.exports = { authenticateToken, authorizeRoles };
+const requireApprovedNgo = (req, res, next) => {
+  if (req.user?.role === 'ngo' && !canPerformReportAction(req.user, 'accept')) {
+    return res.status(403).json({
+      success: false,
+      message: 'Your NGO account is pending administrator approval. You can sign in, but report actions are unavailable until approved.',
+    });
+  }
+  return next();
+};
+
+module.exports = { authenticateToken, authorizeRoles, requireApprovedNgo };

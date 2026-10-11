@@ -1,6 +1,8 @@
 const { db } = require('./index');
 const { calculatePriority, getDepartment } = require('../services/reportRules');
 const { analyzeWithRules } = require('../services/aiAnalyzer');
+const engagement = require('./engagement');
+const { DAILY_REPORT_LIMIT, isDailyLimitReached } = require('../services/trustRules');
 
 const reportSelect = `
   SELECT
@@ -22,6 +24,11 @@ const reportSelect = `
     reports.ai_department AS aiDepartment,
     reports.ai_provider AS aiProvider,
     reports.verified,
+    reports.fake_flagged AS fakeFlagged,
+    reports.fake_reason AS fakeReason,
+    (SELECT details FROM report_events
+      WHERE report_events.report_id = reports.id AND event_type = 'authority_response'
+      ORDER BY id DESC LIMIT 1) AS publicResponse,
     reports.verified_by_ngo_id AS verifiedByNgoId,
     reports.verified_at AS verifiedAt,
     reports.accepted_by_ngo_id AS acceptedByNgoId,
@@ -148,6 +155,14 @@ const createReport = async ({
   aiAnalysis,
 }) => {
   const save = db.transaction(() => {
+    const todayCount = db.prepare(`
+      SELECT COUNT(*) AS count FROM reports WHERE citizen_id = ? AND date(created_at) = date('now')
+    `).get(citizenId).count;
+    if (isDailyLimitReached(todayCount, DAILY_REPORT_LIMIT)) {
+      const limitError = new Error('Daily report limit reached.');
+      limitError.code = 'REPORT_DAILY_LIMIT';
+      throw limitError;
+    }
     let locationRow = db.prepare('SELECT id FROM locations WHERE name = ? COLLATE NOCASE').get(location);
     if (!locationRow) {
       const inserted = db.prepare('INSERT INTO locations (name) VALUES (?)').run(location);
@@ -191,6 +206,12 @@ const createReport = async ({
       INSERT INTO report_updates (report_id, actor_id, from_status, to_status, note)
       VALUES (?, ?, NULL, 'pending', 'Report submitted')
     `).run(result.lastInsertRowid, citizenId);
+    engagement.recordReportEvent({
+      reportId: result.lastInsertRowid,
+      actorId: citizenId,
+      eventType: 'submitted',
+      details: 'Report submitted',
+    });
 
     return result.lastInsertRowid;
   });
@@ -314,6 +335,22 @@ const getReportById = async ({ id, userId, role }) => {
   };
 };
 
+const getReportHistory = async ({ id, userId, role }) => {
+  const report = role === 'citizen'
+    ? db.prepare('SELECT id FROM reports WHERE id = ? AND citizen_id = ?').get(id, userId)
+    : db.prepare('SELECT id FROM reports WHERE id = ?').get(id);
+  if (!report) return null;
+  const visibility = ['authority', 'admin'].includes(role) ? '' : 'AND report_events.is_public = 1';
+  return db.prepare(`
+    SELECT report_events.id, report_events.event_type AS eventType, report_events.details,
+      report_events.is_public AS isPublic, report_events.created_at AS createdAt,
+      users.full_name AS actorName
+    FROM report_events JOIN users ON users.id = report_events.actor_id
+    WHERE report_events.report_id = ? ${visibility}
+    ORDER BY report_events.created_at DESC, report_events.id DESC
+  `).all(id);
+};
+
 const acceptReport = async ({ id, ngoId, organizationName, ngoType }) => {
   const update = db.transaction(() => {
     const report = db.prepare(`${reportSelect} WHERE reports.id = ?`).get(id);
@@ -336,6 +373,11 @@ const acceptReport = async ({ id, ngoId, organizationName, ngoType }) => {
       INSERT INTO report_updates (report_id, actor_id, from_status, to_status, note)
       VALUES (?, ?, 'pending', 'accepted', 'Report accepted by NGO')
     `).run(id, ngoId);
+    const title = report.title;
+    const citizenId = report.citizenId;
+    engagement.recordReportEvent({ reportId: id, actorId: ngoId, eventType: 'accepted', details: 'Report accepted by NGO' });
+    engagement.recordAudit({ actorId: ngoId, action: 'report_accepted', recordType: 'report', recordId: id, details: `Accepted: ${title}` });
+    engagement.notifyUser({ userId: citizenId, reportId: id, eventType: 'accepted', reportTitle: title });
     return true;
   });
   if (!update()) return null;
@@ -345,7 +387,7 @@ const acceptReport = async ({ id, ngoId, organizationName, ngoType }) => {
 const updateReportStatus = async ({ id, ngoId, status, note }) => {
   const update = db.transaction(() => {
     const report = db.prepare(`
-      SELECT status FROM reports WHERE id = ? AND accepted_by_ngo_id = ?
+      SELECT status, title, citizen_id AS citizenId FROM reports WHERE id = ? AND accepted_by_ngo_id = ?
     `).get(id, ngoId);
     const transitions = { accepted: 'in_progress', in_progress: 'resolved' };
     if (!report || transitions[report.status] !== status) return null;
@@ -359,6 +401,10 @@ const updateReportStatus = async ({ id, ngoId, status, note }) => {
       INSERT INTO report_updates (report_id, actor_id, from_status, to_status, note)
       VALUES (?, ?, ?, ?, ?)
     `).run(id, ngoId, report.status, status, note || null);
+    const eventType = status === 'resolved' ? 'resolved' : 'status_changed';
+    engagement.recordReportEvent({ reportId: id, actorId: ngoId, eventType, details: note || `Status changed to ${status}` });
+    engagement.recordAudit({ actorId: ngoId, action: eventType, recordType: 'report', recordId: id, details: `${report.status} → ${status}${note ? `: ${note}` : ''}` });
+    engagement.notifyUser({ userId: report.citizenId, reportId: id, eventType, reportTitle: report.title });
     return true;
   });
   if (!update()) return null;
@@ -368,7 +414,7 @@ const updateReportStatus = async ({ id, ngoId, status, note }) => {
 const verifyReport = async ({ id, ngoId, ngoType }) => {
   const update = db.transaction(() => {
     const report = db.prepare(`
-      SELECT id, category, location_id, description, ai_severity AS aiSeverity, verified
+      SELECT id, category, location_id, description, title, citizen_id AS citizenId, ai_severity AS aiSeverity, verified
       FROM reports WHERE id = ?
     `).get(id);
     if (!report || report.verified) return null;
@@ -394,18 +440,62 @@ const verifyReport = async ({ id, ngoId, ngoType }) => {
       VALUES (?, ?, (SELECT status FROM reports WHERE id = ?),
         (SELECT status FROM reports WHERE id = ?), 'Report verified by NGO')
     `).run(id, ngoId, id, id);
+    engagement.recordReportEvent({ reportId: id, actorId: ngoId, eventType: 'verified', details: 'Report verified by NGO' });
+    engagement.recordAudit({ actorId: ngoId, action: 'report_verified', recordType: 'report', recordId: id, details: `Verified: ${report.title}` });
+    engagement.notifyUser({ userId: report.citizenId, reportId: id, eventType: 'verified', reportTitle: report.title });
     return true;
   });
   if (!update()) return null;
   return getReportById({ id, role: 'authority' });
 };
 
+const updateAuthorityAction = async ({ id, actorId, action, department, priority, reason, response }) => {
+  const update = db.transaction(() => {
+    const report = db.prepare('SELECT id, title, citizen_id AS citizenId, status, department, priority FROM reports WHERE id = ?').get(id);
+    if (!report) return null;
+    if (action === 'assign') {
+      db.prepare('UPDATE reports SET department = ? WHERE id = ?').run(department, id);
+      engagement.recordReportEvent({ reportId: id, actorId, eventType: 'department_assigned', details: `Department assigned: ${department}` });
+      engagement.recordAudit({ actorId, action: 'department_assigned', recordType: 'report', recordId: id, details: `${report.department || 'Unassigned'} → ${department}` });
+    } else if (action === 'priority') {
+      db.prepare('UPDATE reports SET priority = ? WHERE id = ?').run(priority, id);
+      engagement.recordReportEvent({ reportId: id, actorId, eventType: 'priority_changed', details: `${report.priority || 'medium'} → ${priority}: ${reason}` });
+      engagement.recordAudit({ actorId, action: 'priority_changed', recordType: 'report', recordId: id, details: `${report.priority || 'medium'} → ${priority}: ${reason}` });
+    } else if (action === 'respond') {
+      engagement.recordReportEvent({ reportId: id, actorId, eventType: 'authority_response', details: response, isPublic: true });
+      engagement.recordAudit({ actorId, action: 'authority_response', recordType: 'report', recordId: id, details: response });
+      engagement.notifyUser({ userId: report.citizenId, reportId: id, eventType: 'authority_response', reportTitle: report.title });
+    } else if (action === 'resolve') {
+      if (report.status === 'resolved') return report;
+      db.prepare(`UPDATE reports SET status = 'resolved', status_updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(id);
+      db.prepare(`
+        INSERT INTO report_updates (report_id, actor_id, from_status, to_status, note)
+        VALUES (?, ?, ?, 'resolved', 'Resolved by authority')
+      `).run(id, actorId, report.status);
+      engagement.recordReportEvent({ reportId: id, actorId, eventType: 'resolved', details: 'Resolved by authority' });
+      engagement.recordAudit({ actorId, action: 'report_resolved', recordType: 'report', recordId: id, details: `${report.status} → resolved` });
+      engagement.notifyUser({ userId: report.citizenId, reportId: id, eventType: 'resolved', reportTitle: report.title });
+    } else if (action === 'flag') {
+      db.prepare(`
+        UPDATE reports SET fake_flagged = 1, fake_reason = ?, fake_flagged_by = ?, priority = 'low' WHERE id = ?
+      `).run(reason, actorId, id);
+      engagement.recordReportEvent({ reportId: id, actorId, eventType: 'flagged_fake', details: reason });
+      engagement.recordAudit({ actorId, action: 'report_flagged_fake', recordType: 'report', recordId: id, details: reason });
+    }
+    return report;
+  });
+  const result = update();
+  return result ? getReportById({ id, role: 'authority' }) : null;
+};
+
 module.exports = {
   createReport,
   getReports,
   getReportById,
+  getReportHistory,
   acceptReport,
   updateReportStatus,
   verifyReport,
+  updateAuthorityAction,
   seedDemoReports,
 };

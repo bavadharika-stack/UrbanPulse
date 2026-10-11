@@ -78,11 +78,13 @@ exports.updatePlaceStatus = async (req, res, next) => {
     const location = await locationsRepository.updatePlaceStatus({
       locationId: parsedId.data,
       status: parsedBody.data.status,
+      actorId: req.user.id,
+      allowSeeded: req.user.role === 'admin',
     });
     if (!location) {
       return res.status(404).json({
         success: false,
-        message: 'Citizen-added location not found.',
+        message: 'Location not found.',
       });
     }
     return res.json({ success: true, location });
@@ -137,6 +139,12 @@ exports.createRating = async (req, res, next) => {
       return res.status(409).json({
         success: false,
         message: 'You have already rated this place today. Please try again tomorrow.',
+      });
+    }
+    if (error.code === 'RATING_DAILY_LIMIT') {
+      return res.status(429).json({
+        success: false,
+        message: 'You have reached the daily limit of 20 ratings. Please try again tomorrow.',
       });
     }
     return next(error);

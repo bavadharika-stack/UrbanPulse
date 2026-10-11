@@ -23,6 +23,7 @@ const initDb = () => {
       role TEXT NOT NULL DEFAULT 'citizen',
       organization_name TEXT,
       ngo_type TEXT,
+      status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('pending', 'active', 'rejected', 'deactivated')),
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `);
@@ -33,6 +34,9 @@ const initDb = () => {
   }
   if (!columns.includes('ngo_type')) {
     db.exec('ALTER TABLE users ADD COLUMN ngo_type TEXT');
+  }
+  if (!columns.includes('status')) {
+    db.exec("ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active'");
   }
 
   db.exec(`
@@ -69,6 +73,9 @@ const initDb = () => {
       accepted_at DATETIME,
       progress_note TEXT,
       status_updated_at DATETIME,
+      fake_flagged INTEGER NOT NULL DEFAULT 0 CHECK (fake_flagged IN (0, 1)),
+      fake_reason TEXT,
+      fake_flagged_by INTEGER REFERENCES users(id),
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -145,12 +152,51 @@ const initDb = () => {
   if (!reportColumns.includes('verified_at')) {
     db.exec('ALTER TABLE reports ADD COLUMN verified_at DATETIME');
   }
+  if (!reportColumns.includes('fake_flagged')) {
+    db.exec('ALTER TABLE reports ADD COLUMN fake_flagged INTEGER NOT NULL DEFAULT 0');
+  }
+  if (!reportColumns.includes('fake_reason')) db.exec('ALTER TABLE reports ADD COLUMN fake_reason TEXT');
+  if (!reportColumns.includes('fake_flagged_by')) {
+    db.exec('ALTER TABLE reports ADD COLUMN fake_flagged_by INTEGER REFERENCES users(id)');
+  }
   const aiColumns = db.prepare('PRAGMA table_info(reports)').all().map((column) => column.name);
   if (!aiColumns.includes('ai_category')) db.exec('ALTER TABLE reports ADD COLUMN ai_category TEXT');
   if (!aiColumns.includes('ai_severity')) db.exec('ALTER TABLE reports ADD COLUMN ai_severity TEXT');
   if (!aiColumns.includes('ai_sentiment')) db.exec('ALTER TABLE reports ADD COLUMN ai_sentiment TEXT');
   if (!aiColumns.includes('ai_department')) db.exec('ALTER TABLE reports ADD COLUMN ai_department TEXT');
   if (!aiColumns.includes('ai_provider')) db.exec('ALTER TABLE reports ADD COLUMN ai_provider TEXT');
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS report_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      report_id INTEGER NOT NULL REFERENCES reports(id) ON DELETE CASCADE,
+      actor_id INTEGER NOT NULL REFERENCES users(id),
+      event_type TEXT NOT NULL,
+      details TEXT NOT NULL DEFAULT '',
+      is_public INTEGER NOT NULL DEFAULT 0 CHECK (is_public IN (0, 1)),
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS notifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      report_id INTEGER REFERENCES reports(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      message TEXT NOT NULL,
+      is_read INTEGER NOT NULL DEFAULT 0 CHECK (is_read IN (0, 1)),
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON notifications(user_id, is_read, created_at);
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      actor_id INTEGER NOT NULL REFERENCES users(id),
+      action TEXT NOT NULL,
+      record_type TEXT NOT NULL,
+      record_id INTEGER NOT NULL,
+      details TEXT NOT NULL DEFAULT '',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_audit_log_created ON audit_log(created_at DESC);
+  `);
 };
 
 initDb();
@@ -164,6 +210,7 @@ const toPublicUser = (row) => {
     email: row.email,
     role: row.role,
     ngoType: row.ngo_type || '',
+    status: row.status || 'active',
     availability: row.role === 'ngo' ? (row.availability || 'available') : undefined,
     createdAt: row.created_at,
   };
@@ -172,7 +219,7 @@ const toPublicUser = (row) => {
 const findUserByEmail = async (email) =>
   db.prepare(`
     SELECT users.id, users.full_name, users.organization_name, users.email, users.password_hash,
-      users.role, users.ngo_type, users.created_at, ngo_availability.status AS availability
+      users.role, users.ngo_type, users.status, users.created_at, ngo_availability.status AS availability
     FROM users
     LEFT JOIN ngo_availability ON ngo_availability.ngo_id = users.id
     WHERE users.email = ?
@@ -181,7 +228,7 @@ const findUserByEmail = async (email) =>
 const findUserById = async (id) => {
   const row = db.prepare(`
     SELECT users.id, users.full_name, users.organization_name, users.email, users.role,
-      users.ngo_type, users.created_at, ngo_availability.status AS availability
+      users.ngo_type, users.status, users.created_at, ngo_availability.status AS availability
     FROM users
     LEFT JOIN ngo_availability ON ngo_availability.ngo_id = users.id
     WHERE users.id = ?
@@ -189,11 +236,11 @@ const findUserById = async (id) => {
   return toPublicUser(row);
 };
 
-const createUser = async ({ fullName, organizationName = '', email, passwordHash, role, ngoType = '' }) => {
+const createUser = async ({ fullName, organizationName = '', email, passwordHash, role, ngoType = '', status = 'active' }) => {
   const result = db.prepare(`
-    INSERT INTO users (full_name, organization_name, email, password_hash, role, ngo_type)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(fullName, organizationName, email, passwordHash, role, ngoType);
+    INSERT INTO users (full_name, organization_name, email, password_hash, role, ngo_type, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(fullName, organizationName, email, passwordHash, role, ngoType, status);
   return findUserById(result.lastInsertRowid);
 };
 
@@ -220,6 +267,14 @@ const seedDemoAccounts = async () => {
       role: 'authority',
     },
   ];
+  if (config.seedDemoData && config.demoPasswords.admin) {
+    demoAccounts.push({
+      fullName: 'UrbanPulse Administrator',
+      email: config.adminEmail,
+      password: config.demoPasswords.admin,
+      role: 'admin',
+    });
+  }
 
   const insertIfMissing = db.prepare(`
     INSERT OR IGNORE INTO users
@@ -227,13 +282,30 @@ const seedDemoAccounts = async () => {
     VALUES
       (@fullName, @organizationName, @email, @passwordHash, @role, @ngoType)
   `);
+  const insertOrRefreshAdmin = db.prepare(`
+    INSERT INTO users
+      (full_name, organization_name, email, password_hash, role, ngo_type)
+    VALUES
+      (@fullName, @organizationName, @email, @passwordHash, @role, @ngoType)
+    ON CONFLICT(email) DO UPDATE SET password_hash = excluded.password_hash
+    WHERE users.role = 'admin'
+  `);
   const setInitialAvailability = db.prepare(`
     INSERT OR IGNORE INTO ngo_availability (ngo_id, status)
     SELECT id, 'available' FROM users WHERE email = ?
   `);
 
   const insertDemoAccounts = db.transaction((accounts) => {
-    for (const account of accounts) insertIfMissing.run(account);
+    for (const account of accounts) {
+      if (account.role === 'admin') {
+        const result = insertOrRefreshAdmin.run(account);
+        if (!result.changes) {
+          throw new Error(`Cannot seed administrator: ${account.email} is already used by a non-admin account.`);
+        }
+      } else {
+        insertIfMissing.run(account);
+      }
+    }
     setInitialAvailability.run('ngo@urbanpulse.com');
   });
 

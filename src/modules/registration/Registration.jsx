@@ -166,7 +166,9 @@ export default function Registration({ onNavigateToLogin }) {
             {isNgo ? 'NGO Account Created' : 'Account Created Successfully'}
           </h2>
           <p className="card-subtitle">
-            Welcome to UrbanPulse, <strong>{registeredUser?.fullName || registeredUser?.organizationName}</strong>. Your {isNgo ? 'NGO' : 'citizen'} account is ready.
+            Welcome to UrbanPulse, <strong>{registeredUser?.fullName || registeredUser?.organizationName}</strong>. {isNgo
+              ? 'Your NGO application is pending administrator approval. You can sign in to check its status.'
+              : 'Your citizen account is ready.'}
           </p>
 
           <div className="info-box">

@@ -43,7 +43,8 @@ const colorBand = (score) => {
 };
 
 const scoreLocation = ({ location, ratings = [], reports = [] }) => {
-  const openReports = reports.filter((report) => OPEN_STATUSES.has(report.status));
+  const openReports = reports.filter((report) =>
+    OPEN_STATUSES.has(report.status) && report.fakeFlagged !== 1 && report.fakeFlagged !== true);
   const countCategory = (categories) => openReports.filter((report) => categories.includes(report.category)).length;
 
   // Convert mean 1–5 ratings to percent of the maximum, averaging dimensions equally.

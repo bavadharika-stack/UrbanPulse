@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const { z } = require('zod');
 const config = require('../config');
 const userRepository = require('../db');
+const { getLoginRoleMismatchMessage } = require('../services/trustRules');
 
 const registrationSchema = z.object({
   role: z.enum(['citizen', 'ngo']).default('citizen'),
@@ -40,6 +41,7 @@ const registrationSchema = z.object({
 const loginSchema = z.object({
   email: z.string().trim().email().max(254),
   password: z.string().min(1).max(128),
+  role: z.enum(['citizen', 'ngo', 'authority', 'admin']).optional(),
 });
 
 const validationMessage = (error) =>
@@ -79,6 +81,7 @@ exports.register = async (req, res) => {
       passwordHash,
       role: data.role,
       ngoType: data.role === 'ngo' ? data.ngoType : '',
+      status: data.role === 'ngo' ? 'pending' : 'active',
     });
 
     return res.status(201).json({
@@ -106,6 +109,20 @@ exports.login = async (req, res) => {
 
   try {
     const userRecord = await userRepository.findUserByEmail(parsed.data.email.toLowerCase());
+    if (!userRecord && parsed.data.role === 'admin' && parsed.data.email.toLowerCase() === config.adminEmail) {
+      return res.status(503).json({
+        success: false,
+        message: 'Admin sign-in is not configured. Set DEMO_ADMIN_PASSWORD and SEED_DEMO_DATA=true in the server .env, then restart the server.',
+      });
+    }
+    if (!userRecord && parsed.data.role === 'authority'
+      && parsed.data.email.toLowerCase() === 'authority@urbanpulse.com'
+      && !config.seedDemoAccounts) {
+      return res.status(503).json({
+        success: false,
+        message: 'The demo Authority account is disabled. Set SEED_DEMO_ACCOUNTS=true in the server .env, then restart the server.',
+      });
+    }
     const passwordMatches = userRecord
       ? await bcrypt.compare(parsed.data.password, userRecord.password_hash)
       : false;
@@ -118,6 +135,21 @@ exports.login = async (req, res) => {
     }
 
     const user = await userRepository.findUserById(userRecord.id);
+    const roleMismatchMessage = getLoginRoleMismatchMessage(user.role, parsed.data.role);
+    if (roleMismatchMessage) {
+      return res.status(403).json({
+        success: false,
+        message: roleMismatchMessage,
+      });
+    }
+    if (user.status === 'deactivated' || user.status === 'rejected') {
+      return res.status(403).json({
+        success: false,
+        message: user.status === 'rejected'
+          ? 'This NGO application was rejected. Contact an administrator for details.'
+          : 'This account is deactivated. Contact an administrator for assistance.',
+      });
+    }
     return res.json({
       success: true,
       message: 'Login successful.',

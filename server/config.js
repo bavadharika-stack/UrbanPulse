@@ -16,6 +16,19 @@ const envSchema = z.object({
   DEMO_CITIZEN_PASSWORD: z.string().min(6),
   DEMO_NGO_PASSWORD: z.string().min(6),
   DEMO_AUTHORITY_PASSWORD: z.string().min(6),
+  ADMIN_EMAIL: z.string().trim().email().default('admin@urbanpulse.com'),
+  DEMO_ADMIN_PASSWORD: z.string().default('').refine(
+    (value) => value.length === 0 || value.length >= 6,
+    'DEMO_ADMIN_PASSWORD must be empty or at least 6 characters long.',
+  ),
+  SEED_DEMO_DATA: z.preprocess(
+    (value) => value === undefined ? true : !['false', '0', 'no'].includes(String(value).toLowerCase()),
+    z.boolean(),
+  ),
+  SEED_DEMO_ACCOUNTS: z.preprocess(
+    (value) => value === undefined ? true : !['false', '0', 'no'].includes(String(value).toLowerCase()),
+    z.boolean(),
+  ),
 });
 
 const result = envSchema.safeParse(process.env);
@@ -41,5 +54,9 @@ module.exports = {
     citizen: env.DEMO_CITIZEN_PASSWORD,
     ngo: env.DEMO_NGO_PASSWORD,
     authority: env.DEMO_AUTHORITY_PASSWORD,
+    admin: env.DEMO_ADMIN_PASSWORD,
   },
+  adminEmail: env.ADMIN_EMAIL.toLowerCase(),
+  seedDemoData: env.SEED_DEMO_DATA,
+  seedDemoAccounts: env.SEED_DEMO_ACCOUNTS,
 };

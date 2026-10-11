@@ -194,6 +194,13 @@ export default function Dashboard({ currentUser, onLogout, onStartReport, onOpen
                     <MapPin size={13} style={{ color: '#0284c7', flexShrink: 0 }} />
                     <span>{rep.location}</span>
                   </span>
+                  {rep.publicResponse && (
+                    <div className="public-response">
+                      <strong>Authority response</strong>
+                      <p>{rep.publicResponse}</p>
+                    </div>
+                  )}
+                  {rep.fakeFlagged === 1 && <span className="status-badge status-badge-review">Under trust review</span>}
                 </div>
                 <div>
                   {renderStatusBadge(rep.status)}

@@ -43,6 +43,16 @@ test('applies open report penalties and an additional penalty for verified safet
   assert.equal(result.openReportCount, 5);
 });
 
+test('excludes reports flagged as fake from location penalties and open issue counts', () => {
+  const result = scoreLocation({
+    location,
+    ratings: [rating()],
+    reports: [{ category: 'Public Safety', status: 'pending', fakeFlagged: 1 }],
+  });
+  assert.equal(result.scores.safety, 100);
+  assert.equal(result.openReportCount, 0);
+});
+
 test('ignores unresolved rating dimensions and returns null where there is no data', () => {
   const result = scoreLocation({
     location,

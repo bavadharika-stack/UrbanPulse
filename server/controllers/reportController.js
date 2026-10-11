@@ -54,6 +54,12 @@ exports.create = async (req, res) => {
     });
   } catch (error) {
     await removeUploadedFile(req.file);
+    if (error.code === 'REPORT_DAILY_LIMIT') {
+      return res.status(429).json({
+        success: false,
+        message: 'You have reached the daily limit of 10 reports. Please try again tomorrow.',
+      });
+    }
     console.error('Report Creation Error:', error);
     return res.status(500).json({
       success: false,
@@ -98,6 +104,22 @@ exports.getById = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Report not found.' });
     }
     return res.json({ success: true, report });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+exports.history = async (req, res, next) => {
+  const parsedId = reportIdSchema.safeParse(req.params.id);
+  if (!parsedId.success) return res.status(400).json({ success: false, message: 'Report ID must be a positive integer.' });
+  try {
+    const events = await reportsRepository.getReportHistory({
+      id: parsedId.data,
+      userId: req.user.id,
+      role: req.user.role,
+    });
+    if (!events) return res.status(404).json({ success: false, message: 'Report not found.' });
+    return res.json({ success: true, events });
   } catch (error) {
     return next(error);
   }
@@ -180,3 +202,42 @@ exports.verify = async (req, res, next) => {
     return next(error);
   }
 };
+
+const authorityAction = (action) => async (req, res, next) => {
+  const parsedId = reportIdSchema.safeParse(req.params.id);
+  const schemas = {
+    assign: z.object({ department: z.string().trim().min(2).max(100) }),
+    priority: z.object({
+      priority: z.enum(['low', 'medium', 'high', 'critical']),
+      reason: z.string().trim().min(5).max(500),
+    }),
+    respond: z.object({ response: z.string().trim().min(3).max(2000) }),
+    flag: z.object({ reason: z.string().trim().min(5).max(500) }),
+    resolve: z.object({}).optional(),
+  };
+  const parsedBody = schemas[action].safeParse(req.body || {});
+  if (!parsedId.success || !parsedBody.success) {
+    return res.status(400).json({
+      success: false,
+      message: parsedId.success ? validationMessage(parsedBody.error) : 'Report ID must be a positive integer.',
+    });
+  }
+  try {
+    const report = await reportsRepository.updateAuthorityAction({
+      id: parsedId.data,
+      actorId: req.user.id,
+      action,
+      ...parsedBody.data,
+    });
+    if (!report) return res.status(404).json({ success: false, message: 'Report not found.' });
+    return res.json({ success: true, report });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+exports.assignDepartment = authorityAction('assign');
+exports.changePriority = authorityAction('priority');
+exports.publicResponse = authorityAction('respond');
+exports.resolveByAuthority = authorityAction('resolve');
+exports.flagAsFake = authorityAction('flag');
