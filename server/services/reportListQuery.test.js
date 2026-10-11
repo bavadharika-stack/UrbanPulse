@@ -20,6 +20,7 @@ test('applies safe pagination defaults and accepts bounded pagination/filter inp
     from: '2025-01-01',
     to: '2025-02-01',
   }).success, true);
+  assert.equal(reportListQuerySchema.safeParse({ scope: 'community' }).success, true);
 });
 
 test('rejects invalid page sizes, status filters, and date ranges', () => {

@@ -62,6 +62,8 @@ const initDb = () => {
       category TEXT NOT NULL,
       description TEXT NOT NULL,
       image_path TEXT NOT NULL,
+      after_image_path TEXT,
+      issue_group_id INTEGER,
       status TEXT NOT NULL DEFAULT 'pending'
         CHECK (status IN ('pending', 'accepted', 'in_progress', 'resolved')),
       severity TEXT,
@@ -159,6 +161,33 @@ const initDb = () => {
   if (!reportColumns.includes('fake_flagged_by')) {
     db.exec('ALTER TABLE reports ADD COLUMN fake_flagged_by INTEGER REFERENCES users(id)');
   }
+  if (!reportColumns.includes('after_image_path')) {
+    db.exec('ALTER TABLE reports ADD COLUMN after_image_path TEXT');
+  }
+  if (!reportColumns.includes('issue_group_id')) {
+    db.exec('ALTER TABLE reports ADD COLUMN issue_group_id INTEGER');
+  }
+  db.exec(`
+    UPDATE reports
+    SET issue_group_id = (
+      SELECT MIN(sibling.id)
+      FROM reports AS sibling
+      WHERE sibling.location_id = reports.location_id
+        AND sibling.category = reports.category
+    )
+    WHERE issue_group_id IS NULL
+  `);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_reports_issue_group ON reports(issue_group_id);
+    CREATE TABLE IF NOT EXISTS confirmations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      citizen_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      report_id INTEGER NOT NULL REFERENCES reports(id) ON DELETE CASCADE,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE (citizen_id, report_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_confirmations_report_id ON confirmations(report_id);
+  `);
   const aiColumns = db.prepare('PRAGMA table_info(reports)').all().map((column) => column.name);
   if (!aiColumns.includes('ai_category')) db.exec('ALTER TABLE reports ADD COLUMN ai_category TEXT');
   if (!aiColumns.includes('ai_severity')) db.exec('ALTER TABLE reports ADD COLUMN ai_severity TEXT');

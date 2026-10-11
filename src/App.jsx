@@ -169,6 +169,7 @@ export default function App() {
 
           {currentView === 'image-upload' && (
             <ImageUpload
+              currentUser={currentUser}
               onBackToDashboard={() => setCurrentView('dashboard')}
               initialLocation={reportLocationPrefill}
             />

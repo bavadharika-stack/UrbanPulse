@@ -38,6 +38,7 @@ const calculatePriority = ({
   description,
   severity: analyzedSeverity,
   verified = false,
+  confirmationCount = 0,
 }) => {
   const severityScore = {
     low: 1,
@@ -53,7 +54,8 @@ const calculatePriority = ({
     + Math.min(sameLocationCount, 3)
     + (mentionsHazardLocation ? 2 : 0);
   const threshold = score >= 7 ? 3 : score >= 4 ? 2 : score >= 2 ? 1 : 0;
-  const priority = PRIORITIES[threshold];
+  const confirmationBoost = confirmationCount >= 10 ? 2 : confirmationCount >= 3 ? 1 : 0;
+  const priority = PRIORITIES[Math.min(threshold + confirmationBoost, PRIORITIES.length - 1)];
   return { severity: severity.label, priority: verified ? raisePriority(priority) : priority };
 };
 

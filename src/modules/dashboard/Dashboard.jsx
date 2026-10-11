@@ -1,16 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { User, LogOut, Camera, ArrowRight, MapPin, CheckCircle2, Clock, FileText, AlertCircle, Map, Star } from 'lucide-react';
-import { getReports } from '../../api';
+import { confirmReport, getReports } from '../../api';
 import reportCategories from '../../../shared/reportCategories.json';
 import useUrlFilters from '../../shared/useUrlFilters';
-import { EmptyState, Skeleton } from '../../shared/ui';
+import { Badge, Button, EmptyState, Skeleton } from '../../shared/ui';
 import { PaginationControls, ReportFilters } from '../../shared/ReportFilters';
+import ReportPhotos from '../../shared/ReportPhotos';
 
 const DEFAULT_FILTERS = { page: '1', pageSize: '20', q: '', category: '', status: '', from: '', to: '' };
 
 export default function Dashboard({ currentUser, onLogout, onStartReport, onOpenMap, onRatePlace }) {
   const [reports, setReports] = useState([]);
   const [pagination, setPagination] = useState(null);
+  const [communityReports, setCommunityReports] = useState([]);
+  const [communityError, setCommunityError] = useState('');
+  const [communityLoading, setCommunityLoading] = useState(true);
+  const [confirmingReportId, setConfirmingReportId] = useState(null);
   const [stats, setStats] = useState({ total: 0, underReview: 0, resolved: 0 });
   const [reportsError, setReportsError] = useState('');
   const [isLoadingReports, setIsLoadingReports] = useState(true);
@@ -38,6 +43,45 @@ export default function Dashboard({ currentUser, onLogout, onStartReport, onOpen
       });
     return () => { active = false; };
   }, [filters]);
+
+  useEffect(() => {
+    let active = true;
+    setCommunityLoading(true);
+    setCommunityError('');
+    getReports({
+      ...filters,
+      scope: 'community',
+      page: '1',
+      pageSize: '10',
+    })
+      .then((result) => {
+        if (active) setCommunityReports(result.reports);
+      })
+      .catch((error) => {
+        if (active) setCommunityError(error.message);
+      })
+      .finally(() => {
+        if (active) setCommunityLoading(false);
+      });
+    return () => { active = false; };
+  }, [filters.q, filters.category, filters.status, filters.from, filters.to]);
+
+  const handleConfirmReport = async (reportId) => {
+    setConfirmingReportId(reportId);
+    setCommunityError('');
+    try {
+      const result = await confirmReport(reportId);
+      setCommunityReports((items) => items.map((report) => (
+        report.id === reportId
+          ? { ...report, confirmationCount: result.confirmationCount, confirmedByMe: true, priority: result.priority }
+          : report
+      )));
+    } catch (error) {
+      setCommunityError(error.message);
+    } finally {
+      setConfirmingReportId(null);
+    }
+  };
 
   // Helper to render status badge with appropriate styling
   const renderStatusBadge = (status) => {
@@ -201,9 +245,14 @@ export default function Dashboard({ currentUser, onLogout, onStartReport, onOpen
                     </div>
                   )}
                   {rep.fakeFlagged === 1 && <span className="status-badge status-badge-review">Under trust review</span>}
+                  <ReportPhotos report={rep} />
                 </div>
                 <div>
                   {renderStatusBadge(rep.status)}
+                  <div className="report-card-badges">
+                    <Badge tone="neutral">{rep.confirmationCount || 0} confirmations</Badge>
+                    {rep.groupReportCount > 1 && <Badge tone="status">Issue with {rep.groupReportCount} reports</Badge>}
+                  </div>
                 </div>
               </div>
             ))
@@ -222,6 +271,43 @@ export default function Dashboard({ currentUser, onLogout, onStartReport, onOpen
             <span>Sign Out</span>
           </button>
         </div>
+      </div>
+
+      <div className="card mt-3">
+          <div className="card-header" style={{ marginBottom: '0.25rem' }}>
+            <h3 className="card-title" style={{ fontSize: '1.1rem' }}>Community reports</h3>
+            <p className="card-subtitle">Confirm an open issue reported by another citizen.</p>
+          </div>
+          {communityError && <div className="alert alert-error" role="alert">{communityError}</div>}
+          <div className="reports-list">
+            {communityLoading ? <Skeleton lines={3} /> : communityReports.length === 0 ? (
+              <EmptyState title="No community reports match" description="Try adjusting your search and filters." />
+            ) : communityReports.map((report) => (
+              <article key={report.id} className="report-item community-report-item">
+                <div className="report-item-main">
+                  <span className="report-item-title">{report.title}</span>
+                  <span className="report-item-location"><MapPin size={13} />{report.location}</span>
+                  <span className="card-subtitle">{report.category} · {report.status.replaceAll('_', ' ')}</span>
+                  <p>{report.description}</p>
+                  <ReportPhotos report={report} />
+                  {report.groupReportCount > 1 && <Badge tone="status">Issue with {report.groupReportCount} reports</Badge>}
+                </div>
+                <div className="community-report-actions">
+                  <Badge tone="neutral">{report.confirmationCount || 0} confirmations</Badge>
+                  <Button
+                    variant={report.confirmedByMe ? 'secondary' : 'primary'}
+                    size="sm"
+                    disabled={Boolean(report.confirmedByMe) || confirmingReportId === report.id}
+                    onClick={() => handleConfirmReport(report.id)}
+                  >
+                    {report.confirmedByMe
+                      ? 'Already confirmed'
+                      : confirmingReportId === report.id ? 'Confirming…' : 'I see this too'}
+                  </Button>
+                </div>
+              </article>
+            ))}
+          </div>
       </div>
     </div>
   );

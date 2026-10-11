@@ -20,7 +20,7 @@ const storage = multer.diskStorage({
   },
 });
 
-const uploadReportImage = multer({
+const createImageUpload = (fieldName) => multer({
   storage,
   limits: {
     fileSize: 5 * 1024 * 1024,
@@ -36,6 +36,9 @@ const uploadReportImage = multer({
     }
     return callback(null, true);
   },
-}).single('image');
+}).single(fieldName);
 
-module.exports = { uploadReportImage, uploadDirectory };
+const uploadReportImage = createImageUpload('image');
+const uploadAfterImage = createImageUpload('afterImage');
+
+module.exports = { uploadReportImage, uploadAfterImage, uploadDirectory };

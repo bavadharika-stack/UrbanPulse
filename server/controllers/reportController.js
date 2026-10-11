@@ -4,6 +4,7 @@ const { z } = require('zod');
 const reportsRepository = require('../db/reports');
 const { analyzeReport } = require('../services/aiAnalyzer');
 const { reportListQuerySchema } = require('../services/reportListQuery');
+const { requiresAfterPhoto } = require('../services/confirmationRules');
 
 const projectRoot = path.resolve(__dirname, '..', '..');
 
@@ -46,6 +47,7 @@ exports.create = async (req, res) => {
       ...parsed.data,
       imagePath,
       aiAnalysis,
+      allowDuplicate: req.body.submitAnyway === 'true',
     });
     return res.status(201).json({
       success: true,
@@ -60,11 +62,48 @@ exports.create = async (req, res) => {
         message: 'You have reached the daily limit of 10 reports. Please try again tomorrow.',
       });
     }
+    if (error.code === 'REPORT_POSSIBLE_DUPLICATE') {
+      return res.status(409).json({
+        success: false,
+        code: error.code,
+        message: 'A similar issue already exists.',
+        report: error.report,
+      });
+    }
     console.error('Report Creation Error:', error);
     return res.status(500).json({
       success: false,
       message: 'Could not save the report. Please try again.',
     });
+  }
+};
+
+exports.confirm = async (req, res, next) => {
+  const parsedId = reportIdSchema.safeParse(req.params.id);
+  if (!parsedId.success) {
+    return res.status(400).json({ success: false, message: 'Report ID must be a positive integer.' });
+  }
+  try {
+    const result = await reportsRepository.confirmReport({
+      id: parsedId.data,
+      citizenId: req.user.id,
+    });
+    return res.status(201).json({ success: true, ...result });
+  } catch (error) {
+    const statusByCode = {
+      REPORT_NOT_FOUND: 404,
+      REPORT_CLOSED: 409,
+      OWN_REPORT: 403,
+      ALREADY_CONFIRMED: 409,
+    };
+    if (statusByCode[error.code]) {
+      return res.status(statusByCode[error.code]).json({
+        success: false,
+        code: error.code,
+        message: error.message,
+      });
+    }
+    return next(error);
   }
 };
 
@@ -74,6 +113,12 @@ exports.list = async (req, res, next) => {
     return res.status(400).json({
       success: false,
       message: validationMessage(parsedQuery.error),
+    });
+  }
+  if (parsedQuery.data.scope === 'community' && req.user.role !== 'citizen') {
+    return res.status(403).json({
+      success: false,
+      message: 'Only citizens can view community reports for confirmation.',
     });
   }
   try {
@@ -154,20 +199,40 @@ exports.updateStatus = async (req, res, next) => {
   const parsedId = reportIdSchema.safeParse(req.params.id);
   const parsedBody = reportStatusSchema.safeParse(req.body);
   if (!parsedId.success || !parsedBody.success) {
+    await removeUploadedFile(req.file);
     return res.status(400).json({
       success: false,
       message: parsedId.success ? validationMessage(parsedBody.error) : 'Report ID must be a positive integer.',
     });
   }
+  if (requiresAfterPhoto(parsedBody.data) && !req.file) {
+    return res.status(400).json({
+      success: false,
+      code: 'AFTER_PHOTO_REQUIRED',
+      message: 'Upload an after photo before marking this report resolved.',
+    });
+  }
+  if (!requiresAfterPhoto(parsedBody.data) && req.file) {
+    await removeUploadedFile(req.file);
+    return res.status(400).json({
+      success: false,
+      message: 'An after photo can only be uploaded when resolving a report.',
+    });
+  }
 
   try {
+    const afterImagePath = req.file
+      ? path.relative(projectRoot, req.file.path).split(path.sep).join('/')
+      : '';
     const report = await reportsRepository.updateReportStatus({
       id: parsedId.data,
       ngoId: req.user.id,
       status: parsedBody.data.status,
       note: parsedBody.data.note || '',
+      afterImagePath,
     });
     if (!report) {
+      await removeUploadedFile(req.file);
       return res.status(409).json({
         success: false,
         message: 'Only the accepting NGO can advance a report through its allowed statuses.',
@@ -175,6 +240,7 @@ exports.updateStatus = async (req, res, next) => {
     }
     return res.json({ success: true, report });
   } catch (error) {
+    await removeUploadedFile(req.file);
     return next(error);
   }
 };

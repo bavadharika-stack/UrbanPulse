@@ -11,11 +11,11 @@ import {
   MapPin,
   FileText,
 } from 'lucide-react';
-import { createReport } from '../../api';
+import { confirmReport, createReport } from '../../api';
 import reportCategories from '../../../shared/reportCategories.json';
-import { FormField } from '../../shared/ui';
+import { Button, FormField, Modal } from '../../shared/ui';
 
-export default function ImageUpload({ onBackToDashboard, initialLocation = '' }) {
+export default function ImageUpload({ currentUser, onBackToDashboard, initialLocation = '' }) {
   const [formData, setFormData] = useState({
     location: initialLocation,
     category: '',
@@ -30,6 +30,10 @@ export default function ImageUpload({ onBackToDashboard, initialLocation = '' })
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [submittedReport, setSubmittedReport] = useState(null);
+  const [duplicateReport, setDuplicateReport] = useState(null);
+  const [allowDuplicate, setAllowDuplicate] = useState(false);
+  const [confirmationOnly, setConfirmationOnly] = useState(false);
+  const [isConfirmingDuplicate, setIsConfirmingDuplicate] = useState(false);
 
   const fileInputRef = useRef(null);
   const imagePreviewUrlRef = useRef('');
@@ -143,14 +147,8 @@ export default function ImageUpload({ onBackToDashboard, initialLocation = '' })
   };
 
   // Submit the report
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const submitReport = async (submitAnyway = false) => {
     setGeneralError('');
-
-    if (!validateForm()) {
-      return;
-    }
-
     setIsSubmitting(true);
     try {
       await createReport({
@@ -159,8 +157,11 @@ export default function ImageUpload({ onBackToDashboard, initialLocation = '' })
         category: formData.category,
         description: formData.description.trim(),
         image: selectedFile,
+        submitAnyway,
       });
 
+      setDuplicateReport(null);
+      setConfirmationOnly(false);
       setIsSubmitted(true);
       setSubmittedReport({
         location: formData.location.trim(),
@@ -173,9 +174,37 @@ export default function ImageUpload({ onBackToDashboard, initialLocation = '' })
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       });
     } catch (error) {
+      if (error.payload?.code === 'REPORT_POSSIBLE_DUPLICATE' && error.payload.report) {
+        setDuplicateReport(error.payload.report);
+        setGeneralError('');
+        return;
+      }
       setGeneralError(error.message || 'Could not submit the report. Please try again.');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!validateForm()) return;
+    await submitReport(allowDuplicate);
+  };
+
+  const handleConfirmDuplicate = async () => {
+    if (!duplicateReport) return;
+    setIsConfirmingDuplicate(true);
+    setGeneralError('');
+    try {
+      await confirmReport(duplicateReport.id);
+      setConfirmationOnly(true);
+      setSubmittedReport(null);
+      setDuplicateReport(null);
+      setIsSubmitted(true);
+    } catch (error) {
+      setGeneralError(error.message || 'Could not confirm this report.');
+    } finally {
+      setIsConfirmingDuplicate(false);
     }
   };
 
@@ -191,6 +220,9 @@ export default function ImageUpload({ onBackToDashboard, initialLocation = '' })
     setSelectedFile(null);
     setErrors({});
     setGeneralError('');
+    setDuplicateReport(null);
+    setAllowDuplicate(false);
+    setConfirmationOnly(false);
     setIsSubmitted(false);
     setSubmittedReport(null);
     if (fileInputRef.current) {
@@ -212,9 +244,11 @@ export default function ImageUpload({ onBackToDashboard, initialLocation = '' })
           <div className="success-icon-badge">
             <CheckCircle2 size={28} />
           </div>
-          <h2 className="card-title">Report submitted successfully.</h2>
+          <h2 className="card-title">{confirmationOnly ? 'Thanks for confirming this report.' : 'Report submitted successfully.'}</h2>
           <p className="card-subtitle">
-            Your issue details and photo evidence have been recorded for municipal action.
+            {confirmationOnly
+              ? 'Your confirmation was added to the existing issue and its priority has been updated.'
+              : 'Your issue details and photo evidence have been recorded for municipal action.'}
           </p>
 
           {/* Submitted Report Summary */}
@@ -530,6 +564,34 @@ export default function ImageUpload({ onBackToDashboard, initialLocation = '' })
           </div>
         </form>
       </div>
+      <Modal
+        open={Boolean(duplicateReport)}
+        title="A similar issue already exists"
+        onClose={() => setDuplicateReport(null)}
+      >
+        {duplicateReport && (
+          <div className="duplicate-report-prompt">
+            <p>There is already an open report at this location that may describe the same issue:</p>
+            <strong>{duplicateReport.title}</strong>
+            <span>{duplicateReport.location} · {duplicateReport.category}</span>
+            <p>{duplicateReport.description}</p>
+            <div className="dashboard-actions">
+              <Button variant="secondary" disabled={isConfirmingDuplicate} onClick={() => {
+                setAllowDuplicate(true);
+                setDuplicateReport(null);
+                submitReport(true);
+              }}>
+                Submit anyway
+              </Button>
+              {duplicateReport.citizenId !== currentUser?.id && (
+                <Button disabled={isConfirmingDuplicate} onClick={handleConfirmDuplicate}>
+                  {isConfirmingDuplicate ? 'Confirming…' : 'I see this too'}
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

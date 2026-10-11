@@ -21,7 +21,7 @@ const reportListQuerySchema = z.object({
   priority: z.enum(['', 'low', 'medium', 'high', 'critical']).default(''),
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  scope: z.enum(['available', 'mine']).optional(),
+  scope: z.enum(['available', 'mine', 'community']).optional(),
 }).superRefine((query, context) => {
   if (!isDate(query.from)) {
     context.addIssue({ code: 'custom', path: ['from'], message: 'From date must be a valid calendar date.' });

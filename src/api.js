@@ -17,10 +17,11 @@ const clearLegacyStorage = () => {
 clearLegacyStorage();
 
 export class ApiError extends Error {
-  constructor(message, status) {
+  constructor(message, status, payload = null) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
+    this.payload = payload;
   }
 }
 
@@ -52,7 +53,7 @@ const request = async (path, options = {}) => {
 
   if (!response.ok) {
     if (response.status === 401) localStorage.removeItem(API_TOKEN_KEY);
-    throw new ApiError(payload.message || 'The request could not be completed.', response.status);
+    throw new ApiError(payload.message || 'The request could not be completed.', response.status, payload);
   }
   return payload;
 };
@@ -82,13 +83,14 @@ export const logoutUser = () => {
   localStorage.removeItem(API_TOKEN_KEY);
 };
 
-export const createReport = async ({ location, title, category, description, image }) => {
+export const createReport = async ({ location, title, category, description, image, submitAnyway = false }) => {
   const body = new FormData();
   body.append('location', location);
   body.append('title', title);
   body.append('category', category);
   body.append('description', description);
   body.append('image', image);
+  if (submitAnyway) body.append('submitAnyway', 'true');
   return request('/reports', { method: 'POST', body });
 };
 
@@ -104,6 +106,7 @@ const normalizeImageUrl = (imageUrl) => {
 const normalizeReport = (report) => ({
   ...report,
   imageUrl: normalizeImageUrl(report.imageUrl),
+  afterImageUrl: normalizeImageUrl(report.afterImageUrl),
 });
 
 export const getReports = async (filters = {}) => {
@@ -177,6 +180,11 @@ export const getReportHistory = async (reportId) => {
   return result.events;
 };
 
+export const confirmReport = async (reportId) => {
+  const result = await request(`/reports/${encodeURIComponent(reportId)}/confirm`, { method: 'POST' });
+  return result;
+};
+
 export const acceptReport = async (reportId) => {
   const result = await request(`/reports/${encodeURIComponent(reportId)}/accept`, {
     method: 'POST',
@@ -184,10 +192,16 @@ export const acceptReport = async (reportId) => {
   return normalizeReport(result.report);
 };
 
-export const updateReportStatus = async ({ reportId, status, note }) => {
+export const updateReportStatus = async ({ reportId, status, note, afterImage }) => {
+  const body = afterImage ? new FormData() : JSON.stringify({ status, note });
+  if (afterImage) {
+    body.append('status', status);
+    if (note) body.append('note', note);
+    body.append('afterImage', afterImage);
+  }
   const result = await request(`/reports/${encodeURIComponent(reportId)}/status`, {
     method: 'PATCH',
-    body: JSON.stringify({ status, note }),
+    body,
   });
   return normalizeReport(result.report);
 };

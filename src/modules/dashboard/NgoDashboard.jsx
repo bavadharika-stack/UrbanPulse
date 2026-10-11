@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Building2, LogOut, Tag, CheckCircle2, Circle,
-  MapPin, Image, ClipboardCheck, Clock, PlayCircle,
+  MapPin, ClipboardCheck, Clock, PlayCircle,
   Flag, FileText,
 } from 'lucide-react';
 import {
@@ -14,8 +14,9 @@ import {
   performAuthorityAction,
 } from '../../api';
 import useUrlFilters from '../../shared/useUrlFilters';
-import { Badge, EmptyState, Skeleton } from '../../shared/ui';
+import { Badge, Button, EmptyState, FormField, Skeleton } from '../../shared/ui';
 import { PaginationControls, ReportFilters } from '../../shared/ReportFilters';
+import ReportPhotos from '../../shared/ReportPhotos';
 
 const DEFAULT_FILTERS = { page: '1', pageSize: '20', q: '', status: '', from: '', to: '' };
 
@@ -37,34 +38,6 @@ function StatusBadge({ status }) {
 
 // ─── Shared sub-components ───────────────────────────────────────────────────
 
-function IssueImage({ issue }) {
-  if (issue.imageUrl) {
-    return (
-      <div style={{ borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-color)', maxHeight: '180px' }}>
-        <img
-          src={issue.imageUrl}
-          alt={`Evidence for ${issue.title}`}
-          style={{ width: '100%', maxHeight: '180px', objectFit: 'cover', display: 'block' }}
-        />
-      </div>
-    );
-  }
-  if (issue.fileName) {
-    return (
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: '0.4rem',
-        fontSize: '0.8rem', color: '#94a3b8',
-        padding: '0.4rem 0.6rem', background: '#f8fafc',
-        borderRadius: '6px', border: '1px solid #e2e8f0',
-      }}>
-        <Image size={13} />
-        <span>{issue.fileName}</span>
-      </div>
-    );
-  }
-  return null;
-}
-
 function IssueMeta({ issue }) {
   return (
     <>
@@ -76,6 +49,10 @@ function IssueMeta({ issue }) {
           <MapPin size={13} style={{ color: '#0284c7', flexShrink: 0 }} />
           <span>{issue.location}</span>
         </span>
+      </div>
+      <div className="report-card-badges">
+        <Badge tone="neutral">{issue.confirmationCount || 0} confirmations</Badge>
+        {issue.groupReportCount > 1 && <Badge tone="status">Issue with {issue.groupReportCount} reports</Badge>}
       </div>
       {issue.aiCategory && (
         <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.78rem', color: '#64748b' }}>
@@ -93,6 +70,8 @@ function ProgressPanel({ issue, ngoId, onUpdated }) {
   const [busy, setBusy]           = useState(false);
   const [noteError, setNoteError] = useState('');
   const [actionError, setActionError] = useState('');
+  const [afterPhoto, setAfterPhoto] = useState(null);
+  const [afterPhotoError, setAfterPhotoError] = useState('');
 
   const isResolved   = issue.status === 'resolved';
   const isInProgress = issue.status === 'in_progress';
@@ -109,10 +88,21 @@ function ProgressPanel({ issue, ngoId, onUpdated }) {
     }
     setNoteError('');
     setActionError('');
+    if (isInProgress && !afterPhoto) {
+      setAfterPhotoError('Choose an after photo before resolving this report.');
+      return;
+    }
+    setAfterPhotoError('');
     setBusy(true);
     try {
-      await updateReportStatus({ reportId: issue.id, status: nextStatus, note });
+      await updateReportStatus({
+        reportId: issue.id,
+        status: nextStatus,
+        note,
+        afterImage: nextStatus === 'resolved' ? afterPhoto : undefined,
+      });
       setNote('');
+      setAfterPhoto(null);
       await onUpdated();
     } catch (error) {
       setActionError(error.message);
@@ -187,12 +177,44 @@ function ProgressPanel({ issue, ngoId, onUpdated }) {
           {noteError && (
             <span style={{ fontSize: '0.78rem', color: '#ef4444' }}>{noteError}</span>
           )}
+          {isInProgress && (
+            <FormField
+              label="After photo (required to resolve)"
+              htmlFor={`after-photo-${issue.id}`}
+              error={afterPhotoError}
+            >
+              <input
+                id={`after-photo-${issue.id}`}
+                className="form-control input-no-prefix"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={(event) => {
+                  const file = event.target.files?.[0] || null;
+                  if (file && !['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+                    setAfterPhoto(null);
+                    setAfterPhotoError('Choose a JPG, PNG, or WebP image.');
+                    event.target.value = '';
+                    return;
+                  }
+                  if (file && file.size > 5 * 1024 * 1024) {
+                    setAfterPhoto(null);
+                    setAfterPhotoError('The after photo must be 5 MB or smaller.');
+                    event.target.value = '';
+                    return;
+                  }
+                  setAfterPhoto(file);
+                  setAfterPhotoError('');
+                }}
+              />
+            </FormField>
+          )}
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <button
+            <Button
               type="button"
               id={`btn-progress-${issue.id}`}
-              className={`btn btn-sm ${isAccepted ? 'btn-primary' : 'btn-secondary'}`}
-              disabled={busy}
+              variant={isAccepted ? 'primary' : 'secondary'}
+              size="sm"
+              disabled={busy || (isInProgress && !afterPhoto)}
               onClick={handleUpdate}
               style={isInProgress ? { background: '#16a34a', color: '#fff', borderColor: '#16a34a' } : {}}
             >
@@ -201,7 +223,7 @@ function ProgressPanel({ issue, ngoId, onUpdated }) {
               ) : (
                 <><BtnIcon size={14} /><span>{btnLabel}</span></>
               )}
-            </button>
+            </Button>
           </div>
         </>
       )}
@@ -460,7 +482,7 @@ export default function NgoDashboard({ currentUser, onLogout }) {
                 <p style={{ margin: 0, fontSize: '0.8125rem', color: '#475569', lineHeight: 1.5 }}>
                   {issue.description}
                 </p>
-                <IssueImage issue={issue} />
+                <ReportPhotos report={issue} />
                 <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                   <button
                     type="button"
@@ -502,7 +524,7 @@ export default function NgoDashboard({ currentUser, onLogout }) {
                 <p style={{ margin: 0, fontSize: '0.8125rem', color: '#475569', lineHeight: 1.5 }}>
                   {issue.description}
                 </p>
-                <IssueImage issue={issue} />
+                <ReportPhotos report={issue} />
 
                 {/* Progress panel */}
                 <ProgressPanel issue={issue} ngoId={ngoId} onUpdated={loadIssues} />

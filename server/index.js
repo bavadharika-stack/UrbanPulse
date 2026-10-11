@@ -53,7 +53,7 @@ app.use((error, req, res, next) => {
     return res.status(413).json({ success: false, message: 'Image must be 5 MB or smaller.' });
   }
   if (error.code === 'LIMIT_FILE_COUNT' || error.code === 'LIMIT_UNEXPECTED_FILE') {
-    return res.status(400).json({ success: false, message: 'Upload exactly one image in the image field.' });
+    return res.status(400).json({ success: false, message: 'Upload exactly one image in the expected image field.' });
   }
   if (error.code === 'UPLOAD_INVALID_TYPE') {
     return res.status(400).json({ success: false, message: error.message });

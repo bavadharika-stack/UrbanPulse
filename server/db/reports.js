@@ -1,8 +1,14 @@
 const { db } = require('./index');
-const { calculatePriority, getDepartment } = require('../services/reportRules');
+const { calculatePriority, getDepartment, raisePriority } = require('../services/reportRules');
 const { analyzeWithRules } = require('../services/aiAnalyzer');
 const engagement = require('./engagement');
 const { DAILY_REPORT_LIMIT, isDailyLimitReached } = require('../services/trustRules');
+const { calculateTextSimilarity, isLikelyDuplicate } = require('../services/reportSimilarity');
+const {
+  getConfirmationEscalationLevel,
+  getConfirmationError,
+  requiresAfterPhoto,
+} = require('../services/confirmationRules');
 
 const reportSelect = `
   SELECT
@@ -13,6 +19,14 @@ const reportSelect = `
     reports.category,
     reports.description,
     reports.image_path AS imagePath,
+    reports.after_image_path AS afterImagePath,
+    reports.issue_group_id AS issueGroupId,
+    (SELECT COUNT(*) FROM reports AS grouped
+      WHERE COALESCE(grouped.issue_group_id, grouped.id) = COALESCE(reports.issue_group_id, reports.id)
+    ) AS groupReportCount,
+    (SELECT COUNT(*) FROM confirmations
+      WHERE confirmations.report_id = reports.id
+    ) AS confirmationCount,
     reports.status,
     reports.severity,
     reports.sentiment,
@@ -39,6 +53,16 @@ const reportSelect = `
     reports.created_at AS createdAt
   FROM reports
 `;
+
+const mapReport = (row, confirmedByMe = false) => ({
+  ...row,
+  fileName: row.imagePath ? row.imagePath.split(/[\\/]/).pop() : '',
+  imageUrl: row.imagePath ? `/${row.imagePath.replace(/\\/g, '/')}` : '',
+  afterImageUrl: row.afterImagePath ? `/${row.afterImagePath.replace(/\\/g, '/')}` : '',
+  confirmationCount: row.confirmationCount || 0,
+  groupReportCount: row.groupReportCount || 1,
+  confirmedByMe,
+});
 
 const seedDemoReports = async (citizenId) => {
   const seed = db.transaction(() => {
@@ -102,6 +126,8 @@ const seedDemoReports = async (citizenId) => {
         getDepartment(sample.category),
         priority,
       );
+      db.prepare('UPDATE reports SET issue_group_id = ? WHERE id = ?')
+        .run(Number(report.lastInsertRowid), Number(report.lastInsertRowid));
       insertUpdate.run(report.lastInsertRowid, citizenId, sample.status);
     }
   });
@@ -122,12 +148,16 @@ const seedDemoReports = async (citizenId) => {
       const sameLocationCount = db.prepare(`
         SELECT COUNT(*) AS count FROM reports WHERE location_id = ?
       `).get(report.location_id).count;
+      const confirmationCount = db.prepare(`
+        SELECT COUNT(*) AS count FROM confirmations WHERE report_id = ?
+      `).get(report.id).count;
       const { severity, priority } = calculatePriority({
         category: report.category,
         sameLocationCount,
         description: report.description,
         verified: Boolean(report.verified),
         severity: analysis.severity,
+        confirmationCount,
       });
       updateClassification.run(
         severity,
@@ -153,8 +183,33 @@ const createReport = async ({
   description,
   imagePath,
   aiAnalysis,
+  allowDuplicate = false,
 }) => {
   const save = db.transaction(() => {
+    let locationRow = db.prepare('SELECT id FROM locations WHERE name = ? COLLATE NOCASE').get(location);
+    if (!locationRow) {
+      const inserted = db.prepare('INSERT INTO locations (name) VALUES (?)').run(location);
+      locationRow = { id: inserted.lastInsertRowid };
+    }
+
+    const possibleDuplicates = db.prepare(`
+      ${reportSelect}
+      WHERE reports.location_id = ?
+        AND reports.category = ?
+        AND reports.status IN ('pending', 'accepted', 'in_progress')
+    `).all(locationRow.id, category);
+    const submittedText = { title, description };
+    const duplicate = possibleDuplicates
+      .filter((report) => isLikelyDuplicate(report, submittedText))
+      .map((report) => ({ report, similarity: calculateTextSimilarity(report, submittedText) }))
+      .sort((first, second) => second.similarity - first.similarity)[0];
+    if (duplicate && !allowDuplicate) {
+      const duplicateError = new Error('A similar issue already exists.');
+      duplicateError.code = 'REPORT_POSSIBLE_DUPLICATE';
+      duplicateError.report = mapReport(duplicate.report);
+      throw duplicateError;
+    }
+
     const todayCount = db.prepare(`
       SELECT COUNT(*) AS count FROM reports WHERE citizen_id = ? AND date(created_at) = date('now')
     `).get(citizenId).count;
@@ -162,11 +217,6 @@ const createReport = async ({
       const limitError = new Error('Daily report limit reached.');
       limitError.code = 'REPORT_DAILY_LIMIT';
       throw limitError;
-    }
-    let locationRow = db.prepare('SELECT id FROM locations WHERE name = ? COLLATE NOCASE').get(location);
-    if (!locationRow) {
-      const inserted = db.prepare('INSERT INTO locations (name) VALUES (?)').run(location);
-      locationRow = { id: inserted.lastInsertRowid };
     }
 
     const sameLocationCount = db.prepare(`
@@ -201,6 +251,13 @@ const createReport = async ({
       aiAnalysis.department,
       aiAnalysis.provider,
     );
+    const group = db.prepare(`
+      SELECT MIN(COALESCE(issue_group_id, id)) AS groupId
+      FROM reports
+      WHERE location_id = ? AND category = ? AND id != ?
+    `).get(locationRow.id, category, result.lastInsertRowid);
+    db.prepare('UPDATE reports SET issue_group_id = ? WHERE id = ?')
+      .run(group.groupId || Number(result.lastInsertRowid), result.lastInsertRowid);
 
     db.prepare(`
       INSERT INTO report_updates (report_id, actor_id, from_status, to_status, note)
@@ -235,7 +292,11 @@ const getReports = async ({
 }) => {
   const conditions = [];
   const parameters = [];
-  if (role === 'citizen') {
+  if (role === 'citizen' && scope === 'community') {
+    conditions.push('reports.citizen_id != ?');
+    conditions.push("reports.status IN ('pending', 'accepted', 'in_progress')");
+    parameters.push(userId);
+  } else if (role === 'citizen') {
     conditions.push('reports.citizen_id = ?');
     parameters.push(userId);
   }
@@ -300,11 +361,12 @@ const getReports = async ({
     LIMIT ? OFFSET ?
   `).all(...parameters, pageSize, (page - 1) * pageSize);
   return {
-    reports: rows.map((row) => ({
-    ...row,
-    fileName: row.imagePath ? row.imagePath.split(/[\\/]/).pop() : '',
-    imageUrl: row.imagePath ? `/${row.imagePath.replace(/\\/g, '/')}` : '',
-    })),
+    reports: rows.map((row) => {
+      const confirmedByMe = role === 'citizen' && db.prepare(`
+        SELECT 1 FROM confirmations WHERE citizen_id = ? AND report_id = ?
+      `).get(userId, row.id);
+      return mapReport(row, Boolean(confirmedByMe));
+    }),
     pagination: {
       page,
       pageSize,
@@ -328,11 +390,75 @@ const getReportById = async ({ id, userId, role }) => {
   const statement = db.prepare(`${reportSelect} ${where}`);
   const row = role === 'citizen' ? statement.get(id, userId) : statement.get(id);
   if (!row) return null;
-  return {
-    ...row,
-    fileName: row.imagePath ? row.imagePath.split(/[\\/]/).pop() : '',
-    imageUrl: row.imagePath ? `/${row.imagePath.replace(/\\/g, '/')}` : '',
-  };
+  const confirmedByMe = role === 'citizen' && Boolean(db.prepare(`
+    SELECT 1 FROM confirmations WHERE citizen_id = ? AND report_id = ?
+  `).get(userId, id));
+  return mapReport(row, confirmedByMe);
+};
+
+const confirmReport = async ({ id, citizenId }) => {
+  const confirm = db.transaction(() => {
+    const report = db.prepare(`
+      SELECT id, citizen_id AS citizenId, title, status, priority
+      FROM reports WHERE id = ?
+    `).get(id);
+    if (!report) {
+      const missing = new Error('Report not found.');
+      missing.code = 'REPORT_NOT_FOUND';
+      throw missing;
+    }
+    if (!['pending', 'accepted', 'in_progress'].includes(report.status)) {
+      const closed = new Error('Resolved reports cannot receive confirmations.');
+      closed.code = 'REPORT_CLOSED';
+      throw closed;
+    }
+
+    const exists = Boolean(db.prepare(`
+      SELECT 1 FROM confirmations WHERE citizen_id = ? AND report_id = ?
+    `).get(citizenId, id));
+    const confirmationError = getConfirmationError({
+      reportCitizenId: report.citizenId,
+      citizenId,
+      alreadyConfirmed: exists,
+    });
+    if (confirmationError) {
+      const error = new Error(confirmationError === 'OWN_REPORT'
+        ? 'You cannot confirm your own report.'
+        : 'You have already confirmed this report.');
+      error.code = confirmationError;
+      throw error;
+    }
+
+    db.prepare('INSERT INTO confirmations (citizen_id, report_id) VALUES (?, ?)')
+      .run(citizenId, id);
+    const confirmationCount = db.prepare(`
+      SELECT COUNT(*) AS count FROM confirmations WHERE report_id = ?
+    `).get(id).count;
+    const previousLevel = getConfirmationEscalationLevel(confirmationCount - 1);
+    const nextLevel = getConfirmationEscalationLevel(confirmationCount);
+    let priority = report.priority || 'medium';
+    for (let level = previousLevel; level < nextLevel; level += 1) {
+      priority = raisePriority(priority);
+    }
+    if (nextLevel > previousLevel) {
+      db.prepare('UPDATE reports SET priority = ? WHERE id = ?').run(priority, id);
+    }
+    engagement.recordReportEvent({
+      reportId: id,
+      actorId: citizenId,
+      eventType: 'confirmed',
+      details: `Confirmed by a citizen (${confirmationCount} total)`,
+      isPublic: true,
+    });
+    engagement.notifyUser({
+      userId: report.citizenId,
+      reportId: id,
+      eventType: 'report_confirmed',
+      reportTitle: report.title,
+    });
+    return { confirmationCount, priority };
+  });
+  return confirm();
 };
 
 const getReportHistory = async ({ id, userId, role }) => {
@@ -384,19 +510,26 @@ const acceptReport = async ({ id, ngoId, organizationName, ngoType }) => {
   return getReportById({ id, role: 'authority' });
 };
 
-const updateReportStatus = async ({ id, ngoId, status, note }) => {
+const updateReportStatus = async ({ id, ngoId, status, note, afterImagePath = '' }) => {
   const update = db.transaction(() => {
+    if (requiresAfterPhoto({ status }) && !afterImagePath) {
+      const photoError = new Error('An after photo is required before resolving this report.');
+      photoError.code = 'AFTER_PHOTO_REQUIRED';
+      throw photoError;
+    }
     const report = db.prepare(`
-      SELECT status, title, citizen_id AS citizenId FROM reports WHERE id = ? AND accepted_by_ngo_id = ?
+      SELECT status, title, citizen_id AS citizenId, after_image_path AS afterImagePath
+      FROM reports WHERE id = ? AND accepted_by_ngo_id = ?
     `).get(id, ngoId);
     const transitions = { accepted: 'in_progress', in_progress: 'resolved' };
     if (!report || transitions[report.status] !== status) return null;
 
     db.prepare(`
       UPDATE reports
-      SET status = ?, progress_note = ?, status_updated_at = CURRENT_TIMESTAMP
+      SET status = ?, progress_note = ?, status_updated_at = CURRENT_TIMESTAMP,
+          after_image_path = COALESCE(?, after_image_path)
       WHERE id = ? AND accepted_by_ngo_id = ?
-    `).run(status, note || '', id, ngoId);
+    `).run(status, note || '', afterImagePath || null, id, ngoId);
     db.prepare(`
       INSERT INTO report_updates (report_id, actor_id, from_status, to_status, note)
       VALUES (?, ?, ?, ?, ?)
@@ -405,6 +538,21 @@ const updateReportStatus = async ({ id, ngoId, status, note }) => {
     engagement.recordReportEvent({ reportId: id, actorId: ngoId, eventType, details: note || `Status changed to ${status}` });
     engagement.recordAudit({ actorId: ngoId, action: eventType, recordType: 'report', recordId: id, details: `${report.status} → ${status}${note ? `: ${note}` : ''}` });
     engagement.notifyUser({ userId: report.citizenId, reportId: id, eventType, reportTitle: report.title });
+    if (afterImagePath && !report.afterImagePath) {
+      engagement.recordReportEvent({
+        reportId: id,
+        actorId: ngoId,
+        eventType: 'after_photo_added',
+        details: 'NGO added an after photo',
+        isPublic: true,
+      });
+      engagement.notifyUser({
+        userId: report.citizenId,
+        reportId: id,
+        eventType: 'after_photo_added',
+        reportTitle: report.title,
+      });
+    }
     return true;
   });
   if (!update()) return null;
@@ -423,12 +571,16 @@ const verifyReport = async ({ id, ngoId, ngoType }) => {
     const sameLocationCount = db.prepare(`
       SELECT COUNT(*) AS count FROM reports WHERE location_id = ?
     `).get(report.location_id).count;
+    const confirmationCount = db.prepare(`
+      SELECT COUNT(*) AS count FROM confirmations WHERE report_id = ?
+    `).get(id).count;
     const { priority } = calculatePriority({
       category: report.category,
       sameLocationCount,
       description: report.description,
       severity: report.aiSeverity,
       verified: true,
+      confirmationCount,
     });
     db.prepare(`
       UPDATE reports
@@ -490,6 +642,7 @@ const updateAuthorityAction = async ({ id, actorId, action, department, priority
 
 module.exports = {
   createReport,
+  confirmReport,
   getReports,
   getReportById,
   getReportHistory,

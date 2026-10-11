@@ -12,6 +12,7 @@ import reportCategories from '../../../shared/reportCategories.json';
 import useUrlFilters from '../../shared/useUrlFilters';
 import { Badge, EmptyState, FormField, Skeleton } from '../../shared/ui';
 import { PaginationControls, ReportFilters } from '../../shared/ReportFilters';
+import ReportPhotos from '../../shared/ReportPhotos';
 
 const DEFAULT_FILTERS = {
   page: '1', pageSize: '20', q: '', category: '', status: '', from: '', to: '', department: '', priority: '',
@@ -358,6 +359,11 @@ export default function AuthorityDashboard({ currentUser, onLogout }) {
                 <span className="report-item-title">{report.title}</span>
                 <span className="report-item-location">{report.location}</span>
                 <span className="card-subtitle">{report.category} · {report.department || 'Unassigned'}</span>
+                <div className="report-card-badges">
+                  <Badge tone="neutral">{report.confirmationCount || 0} confirmations</Badge>
+                  {report.groupReportCount > 1 && <Badge tone="status">Issue with {report.groupReportCount} reports</Badge>}
+                </div>
+                <ReportPhotos report={report} />
                 {report.aiCategory && (
                   <span className="card-subtitle">
                     AI: {report.aiCategory} · {report.aiSeverity} severity · {report.aiSentiment} sentiment
