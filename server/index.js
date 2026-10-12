@@ -74,6 +74,7 @@ const startServer = async () => {
     await reportsRepository.seedDemoReports(demoCitizen.id);
     await locationsRepository.seedChennaiPlaces();
     await locationsRepository.seedDemoRatings(demoCitizen.id);
+    await locationsRepository.seedDemoScoreHistory();
   }
   app.listen(config.port, () => {
     console.log(`[UrbanPulse Server] Running on http://localhost:${config.port}`);

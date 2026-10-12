@@ -2,6 +2,7 @@ const { db } = require('./index');
 const { calculatePriority, getDepartment, raisePriority } = require('../services/reportRules');
 const { analyzeWithRules } = require('../services/aiAnalyzer');
 const engagement = require('./engagement');
+const locationsRepository = require('./locations');
 const { DAILY_REPORT_LIMIT, isDailyLimitReached } = require('../services/trustRules');
 const { calculateTextSimilarity, isLikelyDuplicate } = require('../services/reportSimilarity');
 const {
@@ -14,6 +15,7 @@ const reportSelect = `
   SELECT
     reports.id,
     reports.citizen_id AS citizenId,
+    reports.location_id AS locationId,
     reports.location_name AS location,
     reports.title,
     reports.category,
@@ -269,6 +271,7 @@ const createReport = async ({
       eventType: 'submitted',
       details: 'Report submitted',
     });
+    locationsRepository.saveScoreSnapshot(locationRow.id);
 
     return result.lastInsertRowid;
   });
@@ -504,6 +507,7 @@ const acceptReport = async ({ id, ngoId, organizationName, ngoType }) => {
     engagement.recordReportEvent({ reportId: id, actorId: ngoId, eventType: 'accepted', details: 'Report accepted by NGO' });
     engagement.recordAudit({ actorId: ngoId, action: 'report_accepted', recordType: 'report', recordId: id, details: `Accepted: ${title}` });
     engagement.notifyUser({ userId: citizenId, reportId: id, eventType: 'accepted', reportTitle: title });
+    locationsRepository.saveScoreSnapshot(report.locationId);
     return true;
   });
   if (!update()) return null;
@@ -518,7 +522,8 @@ const updateReportStatus = async ({ id, ngoId, status, note, afterImagePath = ''
       throw photoError;
     }
     const report = db.prepare(`
-      SELECT status, title, citizen_id AS citizenId, after_image_path AS afterImagePath
+      SELECT status, title, location_id AS locationId, citizen_id AS citizenId,
+        after_image_path AS afterImagePath
       FROM reports WHERE id = ? AND accepted_by_ngo_id = ?
     `).get(id, ngoId);
     const transitions = { accepted: 'in_progress', in_progress: 'resolved' };
@@ -538,6 +543,7 @@ const updateReportStatus = async ({ id, ngoId, status, note, afterImagePath = ''
     engagement.recordReportEvent({ reportId: id, actorId: ngoId, eventType, details: note || `Status changed to ${status}` });
     engagement.recordAudit({ actorId: ngoId, action: eventType, recordType: 'report', recordId: id, details: `${report.status} → ${status}${note ? `: ${note}` : ''}` });
     engagement.notifyUser({ userId: report.citizenId, reportId: id, eventType, reportTitle: report.title });
+    locationsRepository.saveScoreSnapshot(report.locationId);
     if (afterImagePath && !report.afterImagePath) {
       engagement.recordReportEvent({
         reportId: id,
@@ -603,7 +609,11 @@ const verifyReport = async ({ id, ngoId, ngoType }) => {
 
 const updateAuthorityAction = async ({ id, actorId, action, department, priority, reason, response }) => {
   const update = db.transaction(() => {
-    const report = db.prepare('SELECT id, title, citizen_id AS citizenId, status, department, priority FROM reports WHERE id = ?').get(id);
+    const report = db.prepare(`
+      SELECT id, title, citizen_id AS citizenId, location_id AS locationId,
+        status, department, priority
+      FROM reports WHERE id = ?
+    `).get(id);
     if (!report) return null;
     if (action === 'assign') {
       db.prepare('UPDATE reports SET department = ? WHERE id = ?').run(department, id);
@@ -627,6 +637,7 @@ const updateAuthorityAction = async ({ id, actorId, action, department, priority
       engagement.recordReportEvent({ reportId: id, actorId, eventType: 'resolved', details: 'Resolved by authority' });
       engagement.recordAudit({ actorId, action: 'report_resolved', recordType: 'report', recordId: id, details: `${report.status} → resolved` });
       engagement.notifyUser({ userId: report.citizenId, reportId: id, eventType: 'resolved', reportTitle: report.title });
+      locationsRepository.saveScoreSnapshot(report.locationId);
     } else if (action === 'flag') {
       db.prepare(`
         UPDATE reports SET fake_flagged = 1, fake_reason = ?, fake_flagged_by = ?, priority = 'low' WHERE id = ?

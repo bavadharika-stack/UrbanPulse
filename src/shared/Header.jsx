@@ -93,6 +93,24 @@ export default function Header({ currentView, currentUser, onNavigate, onLogout,
                 <div className="nav-links">
                   <button type="button" className={`nav-btn ${currentView === 'admin-dashboard' ? 'nav-btn-active' : ''}`}
                     onClick={() => navigate('admin-dashboard')}><span>Admin</span></button>
+                  <button type="button" className={`nav-btn ${currentView === 'impact-report' ? 'nav-btn-active' : ''}`}
+                    onClick={() => navigate('impact-report')}><span>Impact Report</span></button>
+                </div>
+              )}
+              {currentUser.role === 'ngo' && (
+                <div className="nav-links">
+                  <button type="button" className={`nav-btn ${currentView === 'ngo-dashboard' ? 'nav-btn-active' : ''}`}
+                    onClick={() => navigate('ngo-dashboard')}><span>Dashboard</span></button>
+                  <button type="button" className={`nav-btn ${currentView === 'impact-report' ? 'nav-btn-active' : ''}`}
+                    onClick={() => navigate('impact-report')}><span>Impact Report</span></button>
+                </div>
+              )}
+              {currentUser.role === 'authority' && (
+                <div className="nav-links">
+                  <button type="button" className={`nav-btn ${currentView === 'authority-dashboard' ? 'nav-btn-active' : ''}`}
+                    onClick={() => navigate('authority-dashboard')}><span>Dashboard</span></button>
+                  <button type="button" className={`nav-btn ${currentView === 'impact-report' ? 'nav-btn-active' : ''}`}
+                    onClick={() => navigate('impact-report')}><span>Impact Report</span></button>
                 </div>
               )}
               <span className="user-badge">

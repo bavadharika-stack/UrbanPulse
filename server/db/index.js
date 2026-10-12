@@ -188,6 +188,26 @@ const initDb = () => {
     );
     CREATE INDEX IF NOT EXISTS idx_confirmations_report_id ON confirmations(report_id);
   `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS score_snapshots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      location_id INTEGER NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
+      accessibility REAL,
+      walkability REAL,
+      safety REAL,
+      cleanliness REAL,
+      heat_comfort REAL,
+      overall REAL,
+      rating_count INTEGER NOT NULL DEFAULT 0,
+      open_issue_count INTEGER NOT NULL DEFAULT 0,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_score_snapshots_location_day
+      ON score_snapshots(location_id, date(created_at));
+    CREATE INDEX IF NOT EXISTS idx_score_snapshots_created
+      ON score_snapshots(location_id, created_at);
+  `);
   const aiColumns = db.prepare('PRAGMA table_info(reports)').all().map((column) => column.name);
   if (!aiColumns.includes('ai_category')) db.exec('ALTER TABLE reports ADD COLUMN ai_category TEXT');
   if (!aiColumns.includes('ai_severity')) db.exec('ALTER TABLE reports ADD COLUMN ai_severity TEXT');

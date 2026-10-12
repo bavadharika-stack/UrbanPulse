@@ -170,6 +170,52 @@ export const getLocationScore = async (locationId) => {
   return result.score;
 };
 
+export const getLocationHistory = async (locationId, days = 30) => {
+  const result = await request(`/locations/${encodeURIComponent(locationId)}/history?days=${days}`);
+  return result;
+};
+
+export const getIssueDensity = async () => {
+  const result = await request('/locations/density');
+  return result.points;
+};
+
+export const getImpactReport = async (filters) => {
+  const params = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && String(value) !== '') params.set(key, String(value));
+  });
+  const result = await request(`/reports/impact?${params.toString()}`);
+  const apiOrigin = /^https?:\/\//i.test(API_BASE_URL)
+    ? new URL(API_BASE_URL).origin
+    : window.location.origin;
+  return {
+    ...result.impact,
+    resolvedGallery: result.impact.resolvedGallery.map((item) => ({
+      ...item,
+      imageUrl: normalizeImageUrl(item.beforeImageUrl),
+      afterImageUrl: normalizeImageUrl(item.afterImageUrl),
+    })),
+    apiOrigin,
+  };
+};
+
+export const downloadImpactPdf = async (filters) => {
+  const params = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && String(value) !== '') params.set(key, String(value));
+  });
+  const headers = new Headers();
+  const token = localStorage.getItem(API_TOKEN_KEY);
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  const response = await fetch(`${API_BASE_URL}/reports/impact/pdf?${params.toString()}`, { headers });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new ApiError(payload.message || 'Could not download the impact report.', response.status, payload);
+  }
+  return response.blob();
+};
+
 export const getReport = async (reportId) => {
   const result = await request(`/reports/${encodeURIComponent(reportId)}`);
   return normalizeReport(result.report);

@@ -11,6 +11,7 @@ import ImageUpload from './modules/image-upload/ImageUpload';
 import RatePlace from './modules/places/RatePlace';
 import PublicSpaceMap from './modules/places/PublicSpaceMap';
 import AdminDashboard from './modules/dashboard/AdminDashboard';
+import ImpactReport from './modules/dashboard/ImpactReport';
 import { getCurrentUser, logoutUser } from './api';
 import { ToastProvider } from './shared/ui';
 
@@ -82,7 +83,7 @@ export default function App() {
   };
 
   const handleNavClick = (view) => {
-    if (['dashboard', 'image-upload', 'rate-place', 'map'].includes(view) && !currentUser) {
+    if (['dashboard', 'image-upload', 'rate-place', 'map', 'impact-report'].includes(view) && !currentUser) {
       setCurrentView('login');
       return;
     }
@@ -96,6 +97,10 @@ export default function App() {
     }
     if (currentUser?.role === 'ngo' && view === 'dashboard') {
       setCurrentView('ngo-dashboard');
+      return;
+    }
+    if (view === 'impact-report' && !['ngo', 'authority', 'admin'].includes(currentUser?.role)) {
+      setCurrentView(getHomeView(currentUser));
       return;
     }
     if (['image-upload', 'rate-place', 'map'].includes(view) && currentUser?.role !== 'citizen') {
@@ -152,6 +157,9 @@ export default function App() {
           )}
           {currentView === 'admin-dashboard' && currentUser?.role === 'admin' && (
             <AdminDashboard currentUser={currentUser} />
+          )}
+          {currentView === 'impact-report' && ['ngo', 'authority', 'admin'].includes(currentUser?.role) && (
+            <ImpactReport currentUser={currentUser} />
           )}
 
           {currentView === 'dashboard' && (

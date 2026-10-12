@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, Building2, LogOut, RefreshCw } from 'lucide-react';
 import {
   getLocationScores,
@@ -31,6 +31,7 @@ const PRIORITY_COLORS = {
   high: '#d97706',
   critical: '#dc2626',
 };
+const ScoreTrend = React.lazy(() => import('../../shared/ScoreTrend'));
 
 export default function AuthorityDashboard({ currentUser, onLogout }) {
   const [reports, setReports] = useState([]);
@@ -39,6 +40,7 @@ export default function AuthorityDashboard({ currentUser, onLogout }) {
   const [categoryCounts, setCategoryCounts] = useState({});
   const [departments, setDepartments] = useState([]);
   const [locationScores, setLocationScores] = useState([]);
+  const [trendLocationId, setTrendLocationId] = useState('');
   const [citizenPlaces, setCitizenPlaces] = useState([]);
   const [placeActionBusy, setPlaceActionBusy] = useState(null);
   const [filters, setFilters] = useUrlFilters(DEFAULT_FILTERS);
@@ -82,7 +84,9 @@ export default function AuthorityDashboard({ currentUser, onLogout }) {
   const loadLocationScores = async () => {
     setScoreError('');
     try {
-      setLocationScores(await getLocationScores());
+      const scores = await getLocationScores();
+      setLocationScores(scores);
+      setTrendLocationId((current) => current || String(scores[0]?.id || ''));
     } catch (loadError) {
       setScoreError(loadError.message);
     }
@@ -232,6 +236,26 @@ export default function AuthorityDashboard({ currentUser, onLogout }) {
             </tbody>
           </table>
         </div>
+      </div>
+
+      <div className="card mt-3">
+        <div className="card-header" style={{ marginBottom: '0.5rem' }}>
+          <h3 className="card-title" style={{ fontSize: '1.1rem' }}>Place score trends</h3>
+          <p className="card-subtitle">Compare all six scores across the selected period.</p>
+        </div>
+        <FormField label="Location" htmlFor="authority-trend-location">
+          <select id="authority-trend-location" className="form-control input-no-prefix"
+            value={trendLocationId}
+            onChange={(event) => setTrendLocationId(event.target.value)}>
+            {locationScores.map((place) => <option key={place.id} value={place.id}>{place.name}</option>)}
+          </select>
+        </FormField>
+        {trendLocationId
+          ? <Suspense fallback={<Skeleton lines={3} />}>
+            <ScoreTrend key={trendLocationId} locationId={trendLocationId}
+              locationName={locationScores.find((place) => String(place.id) === String(trendLocationId))?.name || 'Location'} />
+          </Suspense>
+          : <EmptyState title="No locations available" description="Score history will appear when a mapped location is available." />}
       </div>
 
       <div className="card mt-3">

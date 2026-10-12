@@ -116,6 +116,40 @@ exports.getLocationScores = async (req, res, next) => {
   }
 };
 
+exports.getHistory = async (req, res, next) => {
+  const parsedId = locationIdSchema.safeParse(req.params.id);
+  const parsedDays = z.coerce.number().int().refine((days) => [30, 90, 365].includes(days), {
+    message: 'Days must be 30, 90, or 365.',
+  }).safeParse(req.query.days ?? '30');
+  if (!parsedId.success || !parsedDays.success) {
+    return res.status(400).json({
+      success: false,
+      message: parsedId.success
+        ? parsedDays.error.issues.map((issue) => issue.message).join(' ')
+        : 'Location ID must be a positive integer.',
+    });
+  }
+  try {
+    const history = await locationsRepository.getScoreHistory({
+      locationId: parsedId.data,
+      days: parsedDays.data,
+    });
+    if (!history) return res.status(404).json({ success: false, message: 'Location not found.' });
+    return res.json({ success: true, ...history });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+exports.getIssueDensity = async (req, res, next) => {
+  try {
+    const points = await locationsRepository.getIssueDensity();
+    return res.json({ success: true, points });
+  } catch (error) {
+    return next(error);
+  }
+};
+
 exports.createRating = async (req, res, next) => {
   const parsed = ratingSchema.safeParse(req.body);
   if (!parsed.success) {

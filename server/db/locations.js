@@ -2,6 +2,7 @@ const { db } = require('./index');
 const { scoreLocation } = require('../services/scoreEngine');
 const { canAddPlaceToday, findDuplicatePlace } = require('../services/placeRules');
 const { DAILY_RATING_LIMIT, isDailyLimitReached } = require('../services/trustRules');
+const { getTrendSummary, SCORE_KEYS } = require('../services/trendRules');
 
 const CHENNAI_PLACES = [
   { name: 'Anna Nagar Park', latitude: 13.085, longitude: 80.2101 },
@@ -89,6 +90,119 @@ const seedDemoRatings = async (citizenId) => {
   seed();
 };
 
+const buildLocationScore = (locationId) => {
+  const location = db.prepare(`${LOCATION_FIELDS} WHERE id = ?`).get(locationId);
+  if (!location) return null;
+  const ratings = db.prepare(`
+    SELECT cleanliness, safety, lighting, accessibility, seating, shade,
+      water_availability AS water_availability
+    FROM ratings WHERE location_id = ?
+  `).all(locationId);
+  const reports = db.prepare(`
+    SELECT category, status, verified, fake_flagged AS fakeFlagged
+    FROM reports WHERE location_id = ?
+  `).all(locationId);
+  return scoreLocation({ location, ratings, reports });
+};
+
+const saveScoreSnapshot = (locationId, snapshotDate = new Date().toISOString().slice(0, 10)) => {
+  const score = buildLocationScore(locationId);
+  if (!score) return null;
+  const snapshotAt = `${snapshotDate.slice(0, 10)} 12:00:00`;
+  const existing = db.prepare(`
+    SELECT id FROM score_snapshots
+    WHERE location_id = ? AND date(created_at) = date(?)
+  `).get(locationId, snapshotAt);
+  const values = [
+    score.scores.accessibility,
+    score.scores.walkability,
+    score.scores.safety,
+    score.scores.cleanliness,
+    score.scores.heatComfort,
+    score.scores.overall,
+    score.ratingCount,
+    score.openReportCount,
+  ];
+  if (existing) {
+    db.prepare(`
+      UPDATE score_snapshots
+      SET accessibility = ?, walkability = ?, safety = ?, cleanliness = ?, heat_comfort = ?,
+        overall = ?, rating_count = ?, open_issue_count = ?
+      WHERE id = ?
+    `).run(...values, existing.id);
+    return existing.id;
+  }
+  const inserted = db.prepare(`
+    INSERT INTO score_snapshots (
+      location_id, accessibility, walkability, safety, cleanliness, heat_comfort,
+      overall, rating_count, open_issue_count, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(locationId, ...values, snapshotAt);
+  return inserted.lastInsertRowid;
+};
+
+const getScoreHistory = async ({ locationId, days = 30 }) => {
+  const location = db.prepare("SELECT id, name FROM locations WHERE id = ? AND status = 'active'").get(locationId);
+  if (!location) return null;
+  const snapshots = db.prepare(`
+    SELECT accessibility, walkability, safety, cleanliness,
+      heat_comfort AS heatComfort, overall, rating_count AS ratingCount,
+      open_issue_count AS openIssueCount, created_at AS createdAt
+    FROM score_snapshots
+    WHERE location_id = ? AND date(created_at) >= date('now', ?)
+    ORDER BY created_at, id
+  `).all(locationId, `-${days - 1} days`);
+  return {
+    location,
+    days,
+    snapshots,
+    trend: getTrendSummary(snapshots, days),
+  };
+};
+
+const seedDemoScoreHistory = async () => {
+  const seedSnapshot = db.prepare(`
+    INSERT OR IGNORE INTO score_snapshots (
+      location_id, accessibility, walkability, safety, cleanliness, heat_comfort,
+      overall, rating_count, open_issue_count, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const seed = db.transaction(() => {
+    const locations = db.prepare(`
+      ${LOCATION_FIELDS}
+      WHERE source = 'seed' AND status = 'active'
+    `).all();
+    const today = new Date();
+    for (const location of locations) {
+      const base = buildLocationScore(location.id);
+      if (!base) continue;
+      for (let offset = 55; offset >= 0; offset -= 1) {
+        const date = new Date(today);
+        date.setUTCDate(date.getUTCDate() - offset);
+        const createdAt = `${date.toISOString().slice(0, 10)} 12:00:00`;
+        const drift = Math.sin((56 - offset + location.id) / 8) * 4 + ((56 - offset) / 55) * 5;
+        const values = ['accessibility', 'walkability', 'safety', 'cleanliness', 'heatComfort'].map((key) => {
+          const score = base.scores[key];
+          return score === null ? null : Math.max(0, Math.min(100, score - 2.5 + drift));
+        });
+        const availableScores = values.filter((value) => value !== null);
+        const overall = availableScores.length
+          ? availableScores.reduce((sum, value) => sum + value, 0) / availableScores.length
+          : null;
+        seedSnapshot.run(
+          location.id,
+          ...values,
+          overall,
+          base.ratingCount,
+          base.openReportCount,
+          createdAt,
+        );
+      }
+    }
+  });
+  seed();
+};
+
 const LOCATION_FIELDS = `
   SELECT id, name, latitude, longitude, address, is_user_added AS isUserAdded,
     source, status, created_at AS createdAt
@@ -131,6 +245,25 @@ const getScoreByLocation = async (locationId) => {
   return scores.find((score) => score.id === locationId) || null;
 };
 
+const getIssueDensity = async () => db.prepare(`
+  SELECT locations.latitude, locations.longitude,
+    CASE reports.priority
+      WHEN 'critical' THEN 1
+      WHEN 'high' THEN 0.75
+      WHEN 'medium' THEN 0.5
+      ELSE 0.25
+    END * CASE WHEN reports.verified = 1 THEN 1.2 ELSE 1 END AS weight,
+    reports.priority, reports.verified
+  FROM reports
+  JOIN locations ON locations.id = reports.location_id
+  WHERE locations.status = 'active'
+    AND locations.latitude IS NOT NULL
+    AND locations.longitude IS NOT NULL
+    AND reports.status IN ('pending', 'accepted', 'in_progress')
+    AND reports.fake_flagged = 0
+  ORDER BY weight DESC
+`).all();
+
 const createRating = async ({ citizenId, locationId, ...rating }) => {
   const columns = [
     'citizen_id', 'location_id', 'cleanliness', 'safety', 'lighting',
@@ -154,6 +287,7 @@ const createRating = async ({ citizenId, locationId, ...rating }) => {
     const result = db.prepare(`
       INSERT INTO ratings (${columns.join(', ')}) VALUES (${placeholders})
     `).run(...values);
+    saveScoreSnapshot(locationId);
     return result.lastInsertRowid;
   });
   const ratingId = create();
@@ -236,6 +370,11 @@ module.exports = {
   getUserAddedLocations,
   getScoreByLocation,
   getScores,
+  getIssueDensity,
+  getScoreHistory,
+  saveScoreSnapshot,
+  seedDemoScoreHistory,
+  CHENNAI_PLACES,
   seedChennaiPlaces,
   seedDemoRatings,
   updatePlaceStatus,

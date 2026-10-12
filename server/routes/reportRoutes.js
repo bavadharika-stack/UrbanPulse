@@ -2,6 +2,7 @@ const express = require('express');
 const reportController = require('../controllers/reportController');
 const { authenticateToken, authorizeRoles, requireApprovedNgo } = require('../middleware/auth');
 const { uploadReportImage, uploadAfterImage } = require('../middleware/reportUpload');
+const impactController = require('../controllers/impactController');
 
 const router = express.Router();
 
@@ -12,6 +13,8 @@ router.post(
   uploadReportImage,
   reportController.create,
 );
+router.get('/impact', authorizeRoles('ngo', 'authority', 'admin'), impactController.getImpact);
+router.get('/impact/pdf', authorizeRoles('ngo', 'authority', 'admin'), impactController.downloadImpactPdf);
 router.post('/:id/confirm', authorizeRoles('citizen'), reportController.confirm);
 router.get('/', authorizeRoles('citizen', 'ngo', 'authority'), reportController.list);
 router.get('/:id/history', authorizeRoles('citizen', 'ngo', 'authority', 'admin'), reportController.history);
