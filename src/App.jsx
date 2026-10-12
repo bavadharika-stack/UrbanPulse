@@ -13,10 +13,12 @@ import PublicSpaceMap from './modules/places/PublicSpaceMap';
 import AdminDashboard from './modules/dashboard/AdminDashboard';
 import ImpactReport from './modules/dashboard/ImpactReport';
 import AuthLayout from './shared/AuthLayout';
+import QuickReportPhoto from './modules/image-upload/QuickReportPhoto';
+import { I18nProvider } from './i18n/I18nProvider';
 import { getCurrentUser, logoutUser } from './api';
 import { ToastProvider } from './shared/ui';
 
-export default function App() {
+function AppContent() {
   const [currentView, setCurrentView] = useState('login');
   const [currentUser, setCurrentUser] = useState(null);
   const [prefilledEmail, setPrefilledEmail] = useState('');
@@ -30,6 +32,7 @@ export default function App() {
     }
   });
   const [reportLocationPrefill, setReportLocationPrefill] = useState('');
+  const [quickReportPhoto, setQuickReportPhoto] = useState(null);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -183,10 +186,23 @@ export default function App() {
               onLogout={handleLogout}
               onStartReport={(location = '') => {
                 setReportLocationPrefill(location);
+                setQuickReportPhoto(null);
                 setCurrentView('image-upload');
               }}
               onOpenMap={() => setCurrentView('map')}
               onRatePlace={() => setCurrentView('rate-place')}
+              onQuickReport={() => setCurrentView('quick-report-photo')}
+            />
+          )}
+
+          {currentView === 'quick-report-photo' && currentUser?.role === 'citizen' && (
+            <QuickReportPhoto
+              onCancel={() => setCurrentView('dashboard')}
+              onContinue={(photo) => {
+                setQuickReportPhoto(photo);
+                setReportLocationPrefill('');
+                setCurrentView('image-upload');
+              }}
             />
           )}
 
@@ -195,6 +211,8 @@ export default function App() {
               currentUser={currentUser}
               onBackToDashboard={() => setCurrentView('dashboard')}
               initialLocation={reportLocationPrefill}
+              initialPhoto={quickReportPhoto}
+              quickReport={Boolean(quickReportPhoto)}
             />
           )}
 
@@ -220,5 +238,13 @@ export default function App() {
       <Footer />
     </div>
     </ToastProvider>
+  );
+}
+
+export default function App() {
+  return (
+    <I18nProvider>
+      <AppContent />
+    </I18nProvider>
   );
 }

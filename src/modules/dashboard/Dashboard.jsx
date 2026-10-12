@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { User, LogOut, Camera, ArrowRight, MapPin, CheckCircle2, Clock, FileText, AlertCircle, Map, Star } from 'lucide-react';
+import { User, LogOut, Camera, ArrowRight, MapPin, CheckCircle2, Clock, FileText, AlertCircle, Map, Star, Zap } from 'lucide-react';
 import { confirmReport, getReports } from '../../api';
 import reportCategories from '../../../shared/reportCategories.json';
 import useUrlFilters from '../../shared/useUrlFilters';
 import { Badge, Button, EmptyState, Skeleton } from '../../shared/ui';
 import { PaginationControls, ReportFilters } from '../../shared/ReportFilters';
 import ReportPhotos from '../../shared/ReportPhotos';
+import { useI18n } from '../../i18n/I18nProvider';
 
 const DEFAULT_FILTERS = { page: '1', pageSize: '20', q: '', category: '', status: '', from: '', to: '' };
 
-export default function Dashboard({ currentUser, onLogout, onStartReport, onOpenMap, onRatePlace }) {
+export default function Dashboard({ currentUser, onLogout, onStartReport, onOpenMap, onRatePlace, onQuickReport }) {
+  const { t, formatNumber } = useI18n();
   const [reports, setReports] = useState([]);
   const [pagination, setPagination] = useState(null);
   const [communityReports, setCommunityReports] = useState([]);
@@ -90,21 +92,21 @@ export default function Dashboard({ currentUser, onLogout, onStartReport, onOpen
         return (
           <span className="status-badge status-badge-resolved">
             <CheckCircle2 size={11} style={{ marginRight: '3px' }} />
-            Resolved
+            {t('Resolved')}
           </span>
         );
       case 'accepted':
         return (
           <span className="status-badge status-badge-review">
             <Clock size={11} style={{ marginRight: '3px' }} />
-            Under Review
+            {t('Under Review')}
           </span>
         );
       case 'in_progress':
         return (
           <span className="status-badge status-badge-review">
             <Clock size={11} style={{ marginRight: '3px' }} />
-            In Progress
+            {t('In Progress')}
           </span>
         );
       case 'pending':
@@ -112,7 +114,7 @@ export default function Dashboard({ currentUser, onLogout, onStartReport, onOpen
         return (
           <span className="status-badge status-badge-submitted">
             <FileText size={11} style={{ marginRight: '3px' }} />
-            Submitted
+            {t('Submitted')}
           </span>
         );
     }
@@ -126,10 +128,10 @@ export default function Dashboard({ currentUser, onLogout, onStartReport, onOpen
           <User size={24} />
         </div>
         <div>
-          <div className="user-role-tag">Citizen Contributor</div>
-          <h2 className="dashboard-title">Welcome back, {currentUser?.fullName || 'Citizen'}!</h2>
+          <div className="user-role-tag">{t('Citizen Contributor')}</div>
+          <h2 className="dashboard-title">{t('Welcome back, {name}!', { name: currentUser?.fullName || t('Citizen') })}</h2>
           <p className="dashboard-subtitle">
-            You are signed in as <strong>{currentUser?.email}</strong>.
+            {t('You are signed in as {email}.', { email: currentUser?.email })}
           </p>
         </div>
       </div>
@@ -137,8 +139,8 @@ export default function Dashboard({ currentUser, onLogout, onStartReport, onOpen
       {/* 2. My Activity Section */}
       <div className="card mt-3">
         <div className="card-header" style={{ marginBottom: '0.25rem' }}>
-          <h3 className="card-title" style={{ fontSize: '1.1rem' }}>My Activity</h3>
-          <p className="card-subtitle">Overview of your public space contributions</p>
+          <h3 className="card-title" style={{ fontSize: '1.1rem' }}>{t('My Activity')}</h3>
+          <p className="card-subtitle">{t('Overview of your public space contributions')}</p>
         </div>
 
         {reportsError && (
@@ -149,31 +151,31 @@ export default function Dashboard({ currentUser, onLogout, onStartReport, onOpen
         )}
         <div className="activity-stats-grid">
           <div className="stat-card">
-            <div className="stat-number">{stats.total}</div>
-            <div className="stat-label">Reports Submitted</div>
+            <div className="stat-number">{formatNumber(stats.total)}</div>
+            <div className="stat-label">{t('Reports Submitted')}</div>
           </div>
           <div className="stat-card">
-            <div className="stat-number" style={{ color: '#d97706' }}>{stats.underReview}</div>
-            <div className="stat-label">Under Review</div>
+            <div className="stat-number">{formatNumber(stats.underReview)}</div>
+            <div className="stat-label">{t('Under Review')}</div>
           </div>
           <div className="stat-card">
-            <div className="stat-number" style={{ color: '#059669' }}>{stats.resolved}</div>
-            <div className="stat-label">Resolved</div>
+            <div className="stat-number">{formatNumber(stats.resolved)}</div>
+            <div className="stat-label">{t('Resolved')}</div>
           </div>
         </div>
       </div>
 
       <div className="card mt-3">
         <div className="card-header" style={{ marginBottom: '0.25rem' }}>
-          <h3 className="card-title" style={{ fontSize: '1.1rem' }}>Explore and Rate Public Spaces</h3>
-          <p className="card-subtitle">See community scores across Chennai or add your experience.</p>
+          <h3 className="card-title" style={{ fontSize: '1.1rem' }}>{t('Explore and Rate Public Spaces')}</h3>
+          <p className="card-subtitle">{t('See community scores across Chennai or add your experience.')}</p>
         </div>
         <div className="dashboard-actions mt-2">
           <button type="button" className="btn btn-primary btn-sm" onClick={onOpenMap}>
-            <Map size={15} /><span>Open Place Map</span>
+            <Map size={15} /><span>{t('Open Place Map')}</span>
           </button>
           <button type="button" className="btn btn-secondary btn-sm" onClick={onRatePlace}>
-            <Star size={15} /><span>Rate a Place</span>
+            <Star size={15} /><span>{t('Rate a Place')}</span>
           </button>
         </div>
       </div>
@@ -183,11 +185,11 @@ export default function Dashboard({ currentUser, onLogout, onStartReport, onOpen
         <div className="card-header" style={{ marginBottom: '0.25rem' }}>
           <div className="status-indicator">
             <span className="status-dot"></span>
-            <span>Citizen Portal Active</span>
+            <span>{t('Citizen Portal Active')}</span>
           </div>
-          <h3 className="card-title mt-1" style={{ fontSize: '1.1rem' }}>Public Space Intelligence</h3>
+          <h3 className="card-title mt-1" style={{ fontSize: '1.1rem' }}>{t('Public Space Intelligence')}</h3>
           <p className="card-subtitle">
-            Report public space concerns such as damaged pathways, broken lighting, or waste management issues.
+            {t('Report public space concerns such as damaged pathways, broken lighting, or waste management issues.')}
           </p>
         </div>
 
@@ -197,10 +199,10 @@ export default function Dashboard({ currentUser, onLogout, onStartReport, onOpen
           </div>
           <div style={{ flex: 1 }}>
             <h4 style={{ margin: '0 0 0.2rem', fontSize: '0.95rem', color: '#0f172a' }}>
-              Report a Public Space Issue
+              {t('Report a Public Space Issue')}
             </h4>
             <p style={{ margin: 0, fontSize: '0.8125rem', color: '#64748b' }}>
-              Provide location, issue details, and photographic evidence for municipal action.
+              {t('Provide location, issue details, and photographic evidence for municipal action.')}
             </p>
           </div>
           <button
@@ -210,8 +212,11 @@ export default function Dashboard({ currentUser, onLogout, onStartReport, onOpen
             onClick={onStartReport}
             style={{ whiteSpace: 'nowrap' }}
           >
-            <span>Report an Issue</span>
+            <span>{t('Report an Issue')}</span>
             <ArrowRight size={14} />
+          </button>
+          <button type="button" className="btn btn-secondary btn-sm quick-report-action" onClick={onQuickReport}>
+            <Zap size={16} aria-hidden="true" /><span>{t('Quick report')}</span>
           </button>
         </div>
       </div>
@@ -219,8 +224,8 @@ export default function Dashboard({ currentUser, onLogout, onStartReport, onOpen
       {/* 4. My Reports / Recent Reports Section */}
       <div className="card mt-3">
         <div className="card-header" style={{ marginBottom: '0.25rem' }}>
-          <h3 className="card-title" style={{ fontSize: '1.1rem' }}>My Reports & Recent Activity</h3>
-          <p className="card-subtitle">Track the status of your reported public space issues</p>
+          <h3 className="card-title" style={{ fontSize: '1.1rem' }}>{t('My Reports & Recent Activity')}</h3>
+          <p className="card-subtitle">{t('Track the status of your reported public space issues')}</p>
         </div>
 
         <ReportFilters filters={filters} onChange={setFilters} categories={reportCategories} />
@@ -228,7 +233,7 @@ export default function Dashboard({ currentUser, onLogout, onStartReport, onOpen
           {isLoadingReports ? (
             <Skeleton lines={4} />
           ) : reports.length === 0 ? (
-            <EmptyState title="No matching reports" description="Adjust the search and filters, or submit a new issue." />
+            <EmptyState title={t('No matching reports')} description={t('Adjust the search and filters, or submit a new issue.')} />
           ) : (
             reports.map((rep) => (
               <div key={rep.id} className="report-item">
@@ -240,18 +245,18 @@ export default function Dashboard({ currentUser, onLogout, onStartReport, onOpen
                   </span>
                   {rep.publicResponse && (
                     <div className="public-response">
-                      <strong>Authority response</strong>
+                      <strong>{t('Authority response')}</strong>
                       <p>{rep.publicResponse}</p>
                     </div>
                   )}
-                  {rep.fakeFlagged === 1 && <span className="status-badge status-badge-review">Under trust review</span>}
+                  {rep.fakeFlagged === 1 && <span className="status-badge status-badge-review">{t('Under trust review')}</span>}
                   <ReportPhotos report={rep} />
                 </div>
                 <div>
                   {renderStatusBadge(rep.status)}
                   <div className="report-card-badges">
-                    <Badge tone="neutral">{rep.confirmationCount || 0} confirmations</Badge>
-                    {rep.groupReportCount > 1 && <Badge tone="status">Issue with {rep.groupReportCount} reports</Badge>}
+                    <Badge tone="neutral">{t('{count} confirmations', { count: formatNumber(rep.confirmationCount || 0) })}</Badge>
+                    {rep.groupReportCount > 1 && <Badge tone="status">{t('Issue with {count} reports', { count: formatNumber(rep.groupReportCount) })}</Badge>}
                   </div>
                 </div>
               </div>
@@ -268,32 +273,32 @@ export default function Dashboard({ currentUser, onLogout, onStartReport, onOpen
             onClick={onLogout}
           >
             <LogOut size={15} />
-            <span>Sign Out</span>
+            <span>{t('Sign Out')}</span>
           </button>
         </div>
       </div>
 
       <div className="card mt-3">
           <div className="card-header" style={{ marginBottom: '0.25rem' }}>
-            <h3 className="card-title" style={{ fontSize: '1.1rem' }}>Community reports</h3>
-            <p className="card-subtitle">Confirm an open issue reported by another citizen.</p>
+            <h3 className="card-title" style={{ fontSize: '1.1rem' }}>{t('Community reports')}</h3>
+            <p className="card-subtitle">{t('Confirm an open issue reported by another citizen.')}</p>
           </div>
           {communityError && <div className="alert alert-error" role="alert">{communityError}</div>}
           <div className="reports-list">
             {communityLoading ? <Skeleton lines={3} /> : communityReports.length === 0 ? (
-              <EmptyState title="No community reports match" description="Try adjusting your search and filters." />
+              <EmptyState title={t('No community reports match')} description={t('Try adjusting your search and filters.')} />
             ) : communityReports.map((report) => (
               <article key={report.id} className="report-item community-report-item">
                 <div className="report-item-main">
                   <span className="report-item-title">{report.title}</span>
                   <span className="report-item-location"><MapPin size={13} />{report.location}</span>
-                  <span className="card-subtitle">{report.category} · {report.status.replaceAll('_', ' ')}</span>
+                  <span className="card-subtitle">{t(report.category)} · {t(report.status.replaceAll('_', ' '))}</span>
                   <p>{report.description}</p>
                   <ReportPhotos report={report} />
-                  {report.groupReportCount > 1 && <Badge tone="status">Issue with {report.groupReportCount} reports</Badge>}
+                  {report.groupReportCount > 1 && <Badge tone="status">{t('Issue with {count} reports', { count: formatNumber(report.groupReportCount) })}</Badge>}
                 </div>
                 <div className="community-report-actions">
-                  <Badge tone="neutral">{report.confirmationCount || 0} confirmations</Badge>
+                  <Badge tone="neutral">{t('{count} confirmations', { count: formatNumber(report.confirmationCount || 0) })}</Badge>
                   <Button
                     variant={report.confirmedByMe ? 'secondary' : 'primary'}
                     size="sm"
@@ -301,8 +306,8 @@ export default function Dashboard({ currentUser, onLogout, onStartReport, onOpen
                     onClick={() => handleConfirmReport(report.id)}
                   >
                     {report.confirmedByMe
-                      ? 'Already confirmed'
-                      : confirmingReportId === report.id ? 'Confirming…' : 'I see this too'}
+                      ? t('Already confirmed')
+                      : confirmingReportId === report.id ? t('Confirming…') : t('I see this too')}
                   </Button>
                 </div>
               </article>

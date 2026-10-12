@@ -17,12 +17,14 @@ import useUrlFilters from '../../shared/useUrlFilters';
 import { Badge, Button, EmptyState, FormField, Skeleton } from '../../shared/ui';
 import { PaginationControls, ReportFilters } from '../../shared/ReportFilters';
 import ReportPhotos from '../../shared/ReportPhotos';
+import { useI18n } from '../../i18n/I18nProvider';
 
 const DEFAULT_FILTERS = { page: '1', pageSize: '20', q: '', status: '', from: '', to: '' };
 
 // ─── Status badge ────────────────────────────────────────────────────────────
 
 function StatusBadge({ status }) {
+  const { t } = useI18n();
   const labels = {
     pending: 'Submitted',
     accepted: 'Accepted',
@@ -31,7 +33,7 @@ function StatusBadge({ status }) {
   };
   return (
     <Badge tone={status === 'resolved' ? 'score-green' : status === 'in_progress' ? 'score-yellow' : 'status'}>
-      {labels[status] || status}
+      {t(labels[status] || status)}
     </Badge>
   );
 }
@@ -39,11 +41,12 @@ function StatusBadge({ status }) {
 // ─── Shared sub-components ───────────────────────────────────────────────────
 
 function IssueMeta({ issue }) {
+  const { t } = useI18n();
   return (
     <>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.8rem', color: '#0284c7', fontWeight: 500 }}>
-          <Tag size={12} /> {issue.category}
+          <Tag size={12} /> {t(issue.category)}
         </span>
         <span className="report-item-location">
           <MapPin size={13} style={{ color: '#0284c7', flexShrink: 0 }} />
@@ -51,8 +54,8 @@ function IssueMeta({ issue }) {
         </span>
       </div>
       <div className="report-card-badges">
-        <Badge tone="neutral">{issue.confirmationCount || 0} confirmations</Badge>
-        {issue.groupReportCount > 1 && <Badge tone="status">Issue with {issue.groupReportCount} reports</Badge>}
+        <Badge tone="neutral">{t('{count} confirmations', { count: issue.confirmationCount || 0 })}</Badge>
+        {issue.groupReportCount > 1 && <Badge tone="status">{t('Issue with {count} reports', { count: issue.groupReportCount })}</Badge>}
       </div>
       {issue.aiCategory && (
         <span style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.78rem', color: '#64748b' }}>
@@ -66,6 +69,7 @@ function IssueMeta({ issue }) {
 // ─── Progress control panel (shown inside My Accepted Issues) ────────────────
 
 function ProgressPanel({ issue, ngoId, onUpdated }) {
+  const { t, formatDate } = useI18n();
   const [note, setNote]           = useState('');
   const [busy, setBusy]           = useState(false);
   const [noteError, setNoteError] = useState('');
@@ -78,18 +82,18 @@ function ProgressPanel({ issue, ngoId, onUpdated }) {
   const isAccepted   = issue.status === 'accepted';
 
   const nextStatus = isAccepted ? 'in_progress' : isInProgress ? 'resolved' : null;
-  const btnLabel   = isAccepted ? 'Start Progress' : isInProgress ? 'Mark as Resolved' : null;
+  const btnLabel   = isAccepted ? t('Start Progress') : isInProgress ? t('Mark as Resolved') : null;
   const BtnIcon    = isAccepted ? PlayCircle : Flag;
 
   const handleUpdate = async () => {
     if (note.length > 300) {
-      setNoteError('Note must be 300 characters or fewer.');
+      setNoteError(t('Note must be 300 characters or fewer.'));
       return;
     }
     setNoteError('');
     setActionError('');
     if (isInProgress && !afterPhoto) {
-      setAfterPhotoError('Choose an after photo before resolving this report.');
+      setAfterPhotoError(t('Choose an after photo before resolving this report.'));
       return;
     }
     setAfterPhotoError('');
@@ -122,12 +126,12 @@ function ProgressPanel({ issue, ngoId, onUpdated }) {
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem' }}>
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.8rem', color: '#1d4ed8', fontWeight: 600 }}>
           <CheckCircle2 size={13} />
-          Accepted by: {issue.acceptedByOrgName}
+          {t('Accepted by')}: {issue.acceptedByOrgName}
         </div>
         {issue.acceptedAt && (
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.8rem', color: '#64748b' }}>
             <Clock size={13} />
-            {new Date(issue.acceptedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+            {formatDate(new Date(issue.acceptedAt), { dateStyle: 'medium', timeStyle: 'short' })}
           </div>
         )}
       </div>
@@ -152,7 +156,7 @@ function ProgressPanel({ issue, ngoId, onUpdated }) {
       {issue.statusUpdatedAt && !isAccepted && (
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.78rem', color: '#94a3b8' }}>
           <Clock size={12} />
-          Status updated: {new Date(issue.statusUpdatedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+          {t('Status updated')}: {formatDate(new Date(issue.statusUpdatedAt), { dateStyle: 'medium', timeStyle: 'short' })}
         </div>
       )}
 
@@ -161,7 +165,7 @@ function ProgressPanel({ issue, ngoId, onUpdated }) {
         <>
           {/* Optional note textarea */}
           <textarea
-            placeholder={`Optional update note (e.g. "Work has started on clearing the waste.")`}
+            placeholder={t('Optional update note (e.g. "Work has started on clearing the waste.")')}
             value={note}
             onChange={(e) => { setNote(e.target.value); setNoteError(''); }}
             rows={2}
@@ -179,7 +183,7 @@ function ProgressPanel({ issue, ngoId, onUpdated }) {
           )}
           {isInProgress && (
             <FormField
-              label="After photo (required to resolve)"
+              label={t('After photo (required to resolve)')}
               htmlFor={`after-photo-${issue.id}`}
               error={afterPhotoError}
             >
@@ -192,13 +196,13 @@ function ProgressPanel({ issue, ngoId, onUpdated }) {
                   const file = event.target.files?.[0] || null;
                   if (file && !['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
                     setAfterPhoto(null);
-                    setAfterPhotoError('Choose a JPG, PNG, or WebP image.');
+                    setAfterPhotoError(t('Choose a JPG, PNG, or WebP image.'));
                     event.target.value = '';
                     return;
                   }
                   if (file && file.size > 5 * 1024 * 1024) {
                     setAfterPhoto(null);
-                    setAfterPhotoError('The after photo must be 5 MB or smaller.');
+                    setAfterPhotoError(t('The after photo must be 5 MB or smaller.'));
                     event.target.value = '';
                     return;
                   }
@@ -219,7 +223,7 @@ function ProgressPanel({ issue, ngoId, onUpdated }) {
               style={isInProgress ? { background: '#16a34a', color: '#fff', borderColor: '#16a34a' } : {}}
             >
               {busy ? (
-                <><span className="spinner-border" /><span>Updating…</span></>
+                <><span className="spinner-border" /><span>{t('Updating…')}</span></>
               ) : (
                 <><BtnIcon size={14} /><span>{btnLabel}</span></>
               )}
@@ -232,7 +236,7 @@ function ProgressPanel({ issue, ngoId, onUpdated }) {
       {isResolved && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8125rem', color: '#16a34a', fontWeight: 600 }}>
           <CheckCircle2 size={14} />
-          Issue resolved. Great work!
+          {t('Issue resolved. Great work!')}
         </div>
       )}
     </div>
@@ -242,6 +246,7 @@ function ProgressPanel({ issue, ngoId, onUpdated }) {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function NgoDashboard({ currentUser, onLogout }) {
+  const { t } = useI18n();
   const orgName = currentUser?.organizationName || 'Your Organization';
   const ngoType = currentUser?.ngoType || '';
   const ngoId   = currentUser?.id;
@@ -365,10 +370,10 @@ export default function NgoDashboard({ currentUser, onLogout }) {
       <div className="card dashboard-welcome-card">
         <div className="user-avatar-badge"><Building2 size={24} /></div>
         <div>
-          <div className="user-role-tag">NGO Partner</div>
-          <h2 className="dashboard-title">Welcome, {orgName}!</h2>
+          <div className="user-role-tag">{t('NGO Partner')}</div>
+          <h2 className="dashboard-title">{t('Welcome, {name}!', { name: orgName })}</h2>
           <p className="dashboard-subtitle">
-            Signed in as <strong>{currentUser?.email}</strong>.
+            {t('Signed in as')} <strong>{currentUser?.email}</strong>.
           </p>
         </div>
       </div>
@@ -376,8 +381,8 @@ export default function NgoDashboard({ currentUser, onLogout }) {
       {/* ── Availability ── */}
       <div className="card mt-3">
         <div className="card-header" style={{ marginBottom: '0.75rem' }}>
-          <h3 className="card-title" style={{ fontSize: '1.1rem' }}>Availability</h3>
-          <p className="card-subtitle">Set whether your organisation is currently accepting issues</p>
+          <h3 className="card-title" style={{ fontSize: '1.1rem' }}>{t('Availability')}</h3>
+          <p className="card-subtitle">{t('Set whether your organisation is currently accepting issues')}</p>
         </div>
 
         {issuesError && (
@@ -387,7 +392,7 @@ export default function NgoDashboard({ currentUser, onLogout }) {
         )}
         {currentUser?.status === 'pending' && (
           <div className="alert alert-warning" role="status">
-            Your NGO application is pending admin approval. You can sign in, but cannot accept or verify reports until approved.
+            {t('Your NGO application is pending admin approval. You can sign in, but cannot accept or verify reports until approved.')}
           </div>
         )}
 
@@ -401,7 +406,7 @@ export default function NgoDashboard({ currentUser, onLogout }) {
             ? <CheckCircle2 size={18} color="#16a34a" />
             : <Circle       size={18} color="#94a3b8" />}
           <span style={{ fontSize: '0.9rem', fontWeight: 600, color: isAvailable ? '#16a34a' : '#64748b' }}>
-            {isAvailable ? 'Available to accept issues' : 'Currently unavailable'}
+            {t(isAvailable ? 'Available to accept issues' : 'Currently unavailable')}
           </span>
         </div>
 
@@ -410,21 +415,21 @@ export default function NgoDashboard({ currentUser, onLogout }) {
             className={`account-type-btn${isAvailable ? ' active' : ''}`}
             disabled={availabilityBusy}
             onClick={() => handleToggle('available')}>
-            <CheckCircle2 size={18} /><span>Available</span>
+            <CheckCircle2 size={18} /><span>{t('Available')}</span>
           </button>
           <button type="button" id="btn-ngo-unavailable"
             className={`account-type-btn${!isAvailable ? ' active' : ''}`}
             disabled={availabilityBusy}
             onClick={() => handleToggle('unavailable')}>
-            <Circle size={18} /><span>Unavailable</span>
+            <Circle size={18} /><span>{t('Unavailable')}</span>
           </button>
         </div>
       </div>
 
       <div className="card mt-3">
         <div className="card-header" style={{ marginBottom: '0.25rem' }}>
-          <h3 className="card-title" style={{ fontSize: '1.1rem' }}>Search and filter reports</h3>
-          <p className="card-subtitle">Filters are saved in the page URL.</p>
+          <h3 className="card-title" style={{ fontSize: '1.1rem' }}>{t('Search and filter reports')}</h3>
+          <p className="card-subtitle">{t('Filters are saved in the page URL.')}</p>
         </div>
         <ReportFilters filters={filters} onChange={setFilters} categories={ngoType ? [ngoType] : []} />
       </div>
@@ -432,20 +437,20 @@ export default function NgoDashboard({ currentUser, onLogout }) {
       {/* ── Available Issues ── */}
       <div className="card mt-3">
         <div className="card-header" style={{ marginBottom: '0.5rem' }}>
-          <h3 className="card-title" style={{ fontSize: '1.1rem' }}>Available Issues</h3>
+          <h3 className="card-title" style={{ fontSize: '1.1rem' }}>{t('Available Issues')}</h3>
           <p className="card-subtitle">
-            {ngoType ? `Matching issues for NGO type: ${ngoType}` : 'No NGO type set.'}
+            {ngoType ? t('Matching issues for NGO type: {type}', { type: t(ngoType) }) : t('No NGO type set.')}
           </p>
         </div>
 
         {!isAvailable ? (
           <p style={{ fontSize: '0.875rem', color: '#94a3b8', textAlign: 'center', padding: '1rem' }}>
-            Set your availability to <strong>Available</strong> to see matching issues.
+            {t('Set your availability to')} <strong>{t('Available')}</strong> {t('to see matching issues.')}
           </p>
         ) : issuesLoading ? (
           <Skeleton lines={4} />
         ) : availableIssues.length === 0 ? (
-          <EmptyState title="No matching open issues" description={`No open issues for ${ngoType || 'your NGO category'} match these filters.`} />
+          <EmptyState title={t('No matching open issues')} description={t('No open issues for {category} match these filters.', { category: t(ngoType || 'your NGO category') })} />
         ) : (
           <>
           <div className="reports-list">
@@ -458,7 +463,7 @@ export default function NgoDashboard({ currentUser, onLogout }) {
                 </div>
                 <IssueMeta issue={issue} />
                 {issue.verified ? (
-                  <span className="status-badge status-badge-resolved">Verified</span>
+                  <span className="status-badge status-badge-resolved">{t('Verified')}</span>
                 ) : (
                   <button
                     type="button"
@@ -466,18 +471,18 @@ export default function NgoDashboard({ currentUser, onLogout }) {
                     disabled={currentUser?.status !== 'active' || verifying === issue.id}
                     onClick={() => handleVerify(issue.id)}
                   >
-                    {verifying === issue.id ? 'Verifying…' : 'Verify Issue'}
+                    {verifying === issue.id ? t('Verifying…') : t('Verify Issue')}
                   </button>
                 )}
                 <div className="fake-flag-controls">
                   <input className="form-control input-no-prefix" maxLength={500}
-                    aria-label={`Reason to flag report ${issue.id}`}
-                    placeholder="Reason to flag as fake"
+                    aria-label={t('Reason to flag report {id}', { id: issue.id })}
+                    placeholder={t('Reason to flag as fake')}
                     value={flagReasons[issue.id] || ''}
                     onChange={(event) => setFlagReasons((current) => ({ ...current, [issue.id]: event.target.value }))} />
                   <button type="button" className="btn btn-secondary btn-sm"
                     disabled={currentUser?.status !== 'active' || issue.fakeFlagged === 1 || (flagReasons[issue.id] || '').trim().length < 5}
-                    onClick={() => handleFlagReport(issue.id)}>Flag as fake</button>
+                    onClick={() => handleFlagReport(issue.id)}>{t('Flag as fake')}</button>
                 </div>
                 <p style={{ margin: 0, fontSize: '0.8125rem', color: '#475569', lineHeight: 1.5 }}>
                   {issue.description}
@@ -492,8 +497,8 @@ export default function NgoDashboard({ currentUser, onLogout }) {
                     onClick={() => handleAccept(issue.id)}
                   >
                     {accepting === issue.id
-                      ? <><span className="spinner-border" /><span>Accepting…</span></>
-                      : <><ClipboardCheck size={14} /><span>Accept Issue</span></>}
+                      ? <><span className="spinner-border" /><span>{t('Accepting…')}</span></>
+                      : <><ClipboardCheck size={14} /><span>{t('Accept Issue')}</span></>}
                   </button>
                 </div>
               </div>
@@ -507,8 +512,8 @@ export default function NgoDashboard({ currentUser, onLogout }) {
       {/* ── My Accepted Issues ── */}
       <div className="card mt-3">
           <div className="card-header" style={{ marginBottom: '0.5rem' }}>
-            <h3 className="card-title" style={{ fontSize: '1.1rem' }}>My Accepted Issues</h3>
-            <p className="card-subtitle">Issues your organisation has taken responsibility for</p>
+            <h3 className="card-title" style={{ fontSize: '1.1rem' }}>{t('My Accepted Issues')}</h3>
+            <p className="card-subtitle">{t('Issues your organisation has taken responsibility for')}</p>
           </div>
 
           {issuesLoading ? <Skeleton lines={3} /> : acceptedIssues.length ? <div className="reports-list">
@@ -520,7 +525,7 @@ export default function NgoDashboard({ currentUser, onLogout }) {
                   <StatusBadge status={issue.status} />
                 </div>
                 <IssueMeta issue={issue} />
-                {issue.fakeFlagged === 1 && <Badge tone="score-red">Flagged as fake</Badge>}
+                {issue.fakeFlagged === 1 && <Badge tone="score-red">{t('Flagged as fake')}</Badge>}
                 <p style={{ margin: 0, fontSize: '0.8125rem', color: '#475569', lineHeight: 1.5 }}>
                   {issue.description}
                 </p>
@@ -530,20 +535,20 @@ export default function NgoDashboard({ currentUser, onLogout }) {
                 <ProgressPanel issue={issue} ngoId={ngoId} onUpdated={loadIssues} />
               </div>
             ))}
-          </div> : <EmptyState title="No accepted issues match" description="Your assigned issue list will reflect the current filters." />}
+          </div> : <EmptyState title={t('No accepted issues match')} description={t('Your assigned issue list will reflect the current filters.')} />}
           <PaginationControls pagination={acceptedPagination} onPageChange={(page) => setFilters({ page: String(page) })} />
       </div>
 
       {/* ── Organisation Details + Sign Out ── */}
       <div className="card mt-3">
         <div className="card-header" style={{ marginBottom: '0.25rem' }}>
-          <h3 className="card-title" style={{ fontSize: '1.1rem' }}>Organisation Details</h3>
-          <p className="card-subtitle">Your registered NGO information</p>
+          <h3 className="card-title" style={{ fontSize: '1.1rem' }}>{t('Organisation Details')}</h3>
+          <p className="card-subtitle">{t('Your registered NGO information')}</p>
         </div>
         <div className="placeholder-module-box">
           <div className="placeholder-icon"><Tag size={22} /></div>
           <div style={{ flex: 1 }}>
-            <h4 style={{ margin: '0 0 0.2rem', fontSize: '0.95rem', color: '#0f172a' }}>NGO Type</h4>
+            <h4 style={{ margin: '0 0 0.2rem', fontSize: '0.95rem', color: '#0f172a' }}>{t('NGO Type')}</h4>
             <p style={{ margin: 0, fontSize: '0.9rem', color: '#0284c7', fontWeight: 600 }}>
               {ngoType || '—'}
             </p>
@@ -552,7 +557,7 @@ export default function NgoDashboard({ currentUser, onLogout }) {
         <div className="dashboard-actions mt-3"
           style={{ paddingTop: '0.85rem', borderTop: '1px solid var(--border-color)' }}>
           <button type="button" className="btn btn-secondary btn-sm" onClick={onLogout}>
-            <LogOut size={15} /><span>Sign Out</span>
+            <LogOut size={15} /><span>{t('Sign Out')}</span>
           </button>
         </div>
       </div>

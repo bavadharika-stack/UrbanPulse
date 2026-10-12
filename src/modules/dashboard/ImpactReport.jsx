@@ -4,10 +4,12 @@ import { downloadImpactPdf, getImpactReport } from '../../api';
 import reportCategories from '../../../shared/reportCategories.json';
 import { Badge, Button, EmptyState, FormField, Skeleton } from '../../shared/ui';
 import ReportPhotos from '../../shared/ReportPhotos';
+import { useI18n } from '../../i18n/I18nProvider';
 
 const currentMonth = () => new Date().toISOString().slice(0, 7);
 
 export default function ImpactReport({ currentUser }) {
+  const { t, formatNumber } = useI18n();
   const [filters, setFilters] = useState({
     month: currentMonth(),
     category: currentUser?.role === 'ngo' ? currentUser.ngoType || '' : '',
@@ -82,37 +84,37 @@ export default function ImpactReport({ currentUser }) {
   return (
     <div className="dashboard-container impact-page">
       <section className="card impact-print-header">
-        <div className="user-role-tag">Monthly NGO performance</div>
-        <h2 className="dashboard-title">NGO Impact Report</h2>
+        <div className="user-role-tag">{t('Monthly NGO performance')}</div>
+        <h2 className="dashboard-title">{t('NGO Impact Report')}</h2>
         <p className="dashboard-subtitle">
-          {impact ? `${impact.ngoName} · ${impact.dateRange.start} to ${impact.dateRange.end}` : 'Review monthly issue response and resolution.'}
+          {impact ? `${impact.ngoName} · ${impact.dateRange.start} ${t('to')} ${impact.dateRange.end}` : t('Review monthly issue response and resolution.')}
         </p>
       </section>
 
       <section className="card mt-3 impact-controls">
         <div className="impact-filter-grid">
-          <FormField label="Month" htmlFor="impact-month">
+          <FormField label={t('Month')} htmlFor="impact-month">
             <input id="impact-month" type="month" className="form-control input-no-prefix"
               max={currentMonth()} value={filters.month} onChange={(event) => updateFilter('month', event.target.value)} />
           </FormField>
-          <FormField label="Area" htmlFor="impact-area">
+          <FormField label={t('Area')} htmlFor="impact-area">
             <input id="impact-area" type="search" className="form-control input-no-prefix"
-              maxLength={120} placeholder="All areas" value={filters.area}
+              maxLength={120} placeholder={t('All areas')} value={filters.area}
               onChange={(event) => updateFilter('area', event.target.value)} />
           </FormField>
-          <FormField label="Category" htmlFor="impact-category">
+          <FormField label={t('Category')} htmlFor="impact-category">
             <select id="impact-category" className="form-control input-no-prefix"
               value={filters.category} disabled={currentUser?.role === 'ngo'}
               onChange={(event) => updateFilter('category', event.target.value)}>
-              <option value="">All categories</option>
-              {reportCategories.map((category) => <option key={category} value={category}>{category}</option>)}
+              <option value="">{t('All categories')}</option>
+              {reportCategories.map((category) => <option key={category} value={category}>{t(category)}</option>)}
             </select>
           </FormField>
           {impact?.availableNgos?.length > 0 && (
-            <FormField label="NGO" htmlFor="impact-ngo">
+            <FormField label={t('NGO')} htmlFor="impact-ngo">
               <select id="impact-ngo" className="form-control input-no-prefix"
                 value={filters.ngoId} onChange={(event) => updateFilter('ngoId', event.target.value)}>
-                <option value="">All NGOs</option>
+                <option value="">{t('All NGOs')}</option>
                 {impact.availableNgos.map((ngo) => <option value={ngo.id} key={ngo.id}>{ngo.name}</option>)}
               </select>
             </FormField>
@@ -120,10 +122,10 @@ export default function ImpactReport({ currentUser }) {
         </div>
         <div className="dashboard-actions impact-actions">
           <Button variant="secondary" onClick={handleOpenPdfForPrinting} disabled={loading || !impact}>
-            <Printer size={16} /><span>Open PDF to print</span>
+            <Printer size={16} /><span>{t('Open PDF to print')}</span>
           </Button>
           <Button disabled={downloading || loading || !impact} onClick={handleDownload}>
-            <Download size={16} /><span>{downloading ? 'Preparing PDF…' : 'Download as PDF'}</span>
+            <Download size={16} /><span>{downloading ? t('Preparing PDF…') : t('Download as PDF')}</span>
           </Button>
         </div>
       </section>
@@ -135,39 +137,39 @@ export default function ImpactReport({ currentUser }) {
             <div className="impact-report-title">
               <div>
                 <h3 className="card-title">{impact.ngoName}</h3>
-                <p className="card-subtitle">{impact.dateRange.start} through {impact.dateRange.end}</p>
+                <p className="card-subtitle">{impact.dateRange.start} {t('through')} {impact.dateRange.end}</p>
               </div>
               {impact.category && <Badge tone="status">{impact.category}</Badge>}
             </div>
             <div className="activity-stats-grid impact-stats-grid">
               {metrics.map(([key, label]) => (
                 <div className="stat-card" key={key}>
-                  <div className="stat-number">{impact.summary[key]}</div>
-                  <div className="stat-label">{label}</div>
+                  <div className="stat-number">{formatNumber(impact.summary[key])}</div>
+                  <div className="stat-label">{t(label)}</div>
                 </div>
               ))}
               <div className="stat-card">
                 <div className="stat-number">
-                  {impact.summary.averageResolutionHours === null ? '—' : `${impact.summary.averageResolutionHours}h`}
+                  {impact.summary.averageResolutionHours === null ? '—' : `${formatNumber(impact.summary.averageResolutionHours)}h`}
                 </div>
-                <div className="stat-label">Average time to resolve</div>
+                <div className="stat-label">{t('Average time to resolve')}</div>
               </div>
             </div>
           </section>
 
           <section className="card mt-3">
-            <h3 className="card-title">Top problem places</h3>
+            <h3 className="card-title">{t('Top problem places')}</h3>
             {impact.topPlaces.length ? (
               <ol className="impact-place-list">
                 {impact.topPlaces.map((place) => (
-                  <li key={place.location}><span>{place.location}</span><Badge tone="neutral">{place.reportCount} reports</Badge></li>
+                  <li key={place.location}><span>{place.location}</span><Badge tone="neutral">{t('{count} reports', { count: formatNumber(place.reportCount) })}</Badge></li>
                 ))}
               </ol>
-            ) : <EmptyState title="No reports for this selection" description="Try another month, area, or category." />}
+            ) : <EmptyState title={t('No reports for this selection')} description={t('Try another month, area, or category.')} />}
           </section>
 
           <section className="card mt-3">
-            <h3 className="card-title">Resolved issues: before and after</h3>
+            <h3 className="card-title">{t('Resolved issues: before and after')}</h3>
             {impact.resolvedGallery.length ? (
               <div className="impact-gallery">
                 {impact.resolvedGallery.map((report) => (
@@ -178,7 +180,7 @@ export default function ImpactReport({ currentUser }) {
                   </article>
                 ))}
               </div>
-            ) : <EmptyState title="No before/after photos yet" description="Resolved reports with an after photo will appear here." />}
+            ) : <EmptyState title={t('No before/after photos yet')} description={t('Resolved reports with an after photo will appear here.')} />}
           </section>
         </>
       )}

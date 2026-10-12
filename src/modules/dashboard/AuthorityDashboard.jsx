@@ -13,6 +13,7 @@ import useUrlFilters from '../../shared/useUrlFilters';
 import { Badge, EmptyState, FormField, Skeleton } from '../../shared/ui';
 import { PaginationControls, ReportFilters } from '../../shared/ReportFilters';
 import ReportPhotos from '../../shared/ReportPhotos';
+import { useI18n } from '../../i18n/I18nProvider';
 
 const DEFAULT_FILTERS = {
   page: '1', pageSize: '20', q: '', category: '', status: '', from: '', to: '', department: '', priority: '',
@@ -34,6 +35,7 @@ const PRIORITY_COLORS = {
 const ScoreTrend = React.lazy(() => import('../../shared/ScoreTrend'));
 
 export default function AuthorityDashboard({ currentUser, onLogout }) {
+  const { t, formatNumber, formatDate } = useI18n();
   const [reports, setReports] = useState([]);
   const [pagination, setPagination] = useState(null);
   const [summary, setSummary] = useState({ total: 0, pending: 0, accepted: 0, in_progress: 0, resolved: 0 });
@@ -174,36 +176,36 @@ export default function AuthorityDashboard({ currentUser, onLogout }) {
       <div className="card dashboard-welcome-card">
         <div className="user-avatar-badge"><Building2 size={24} /></div>
         <div style={{ flex: 1 }}>
-          <div className="user-role-tag">Authority</div>
-          <h2 className="dashboard-title">Public Space Reports</h2>
+          <div className="user-role-tag">{t('Authority')}</div>
+          <h2 className="dashboard-title">{t('Public Space Reports')}</h2>
           <p className="dashboard-subtitle">
-            Signed in as <strong>{currentUser?.email}</strong>. Review and prioritize incoming reports.
+            {t('Signed in as')} <strong>{currentUser?.email}</strong>. {t('Review and prioritize incoming reports.')}
           </p>
         </div>
         <button type="button" className="btn btn-secondary btn-sm" onClick={onLogout}>
-          <LogOut size={15} /><span>Sign Out</span>
+          <LogOut size={15} /><span>{t('Sign Out')}</span>
         </button>
       </div>
 
       <div className="card mt-3">
         <div className="card-header" style={{ marginBottom: '0.25rem' }}>
-          <h3 className="card-title" style={{ fontSize: '1.1rem' }}>Public-Space Scores by Location</h3>
-          <p className="card-subtitle">Lowest available score and the main improvement area for each place</p>
+          <h3 className="card-title" style={{ fontSize: '1.1rem' }}>{t('Public-Space Scores by Location')}</h3>
+          <p className="card-subtitle">{t('Lowest available score and the main improvement area for each place')}</p>
         </div>
         {scoreError && (
           <div className="alert alert-error mt-2" role="alert">
             <AlertCircle size={18} className="alert-icon" /><span>{scoreError}</span>
           </div>
         )}
-        <div className="score-table-wrap mt-2" role="region" aria-label="Public-space scores by location" tabIndex="0">
+        <div className="score-table-wrap mt-2" role="region" aria-label={t('Public-space scores by location')} tabIndex="0">
           <table className="score-table">
             <thead>
               <tr>
-                <th scope="col">Location</th>
-                <th scope="col">Overall</th>
-                <th scope="col">Weakest score</th>
-                <th scope="col">Main issue</th>
-                <th scope="col">Open issues</th>
+                <th scope="col">{t('Location')}</th>
+                <th scope="col">{t('Overall')}</th>
+                <th scope="col">{t('Weakest score')}</th>
+                <th scope="col">{t('Main issue')}</th>
+                <th scope="col">{t('Open issues')}</th>
               </tr>
             </thead>
             <tbody>
@@ -211,27 +213,27 @@ export default function AuthorityDashboard({ currentUser, onLogout }) {
                 <tr key={place.id}>
                   <th scope="row">{place.name}</th>
                   <td>
-                    {place.scores.overall === null ? 'No data' : (
+                    {place.scores.overall === null ? t('No data') : (
                       <>
-                        {Math.round(place.scores.overall)}/100, based on {place.scoreCounts.overall} ratings
-                        {place.confidence.overall === 'low' && <Badge tone="score-yellow" className="rating-confidence">Low confidence</Badge>}
+                        {Math.round(place.scores.overall)}/100, {t('based on {count} ratings', { count: formatNumber(place.scoreCounts.overall) })}
+                        {place.confidence.overall === 'low' && <Badge tone="score-yellow" className="rating-confidence">{t('Low confidence')}</Badge>}
                       </>
                     )}
                   </td>
                   <td>
                     {place.weakestScore
                       ? <>
-                        {place.weakestScore.label}: {place.weakestScore.value}/100, based on {place.scoreCounts[place.weakestScore.key]} ratings
-                        {place.confidence[place.weakestScore.key] === 'low' && <Badge tone="score-yellow" className="rating-confidence">Low confidence</Badge>}
+                        {t(place.weakestScore.label)}: {place.weakestScore.value}/100, {t('based on {count} ratings', { count: formatNumber(place.scoreCounts[place.weakestScore.key]) })}
+                        {place.confidence[place.weakestScore.key] === 'low' && <Badge tone="score-yellow" className="rating-confidence">{t('Low confidence')}</Badge>}
                       </>
-                      : 'No data'}
+                      : t('No data')}
                   </td>
                   <td>{place.mainIssue}</td>
                   <td>{place.openReportCount}</td>
                 </tr>
               ))}
               {!locationScores.length && !scoreError && (
-                <tr><td colSpan="5">No location scores are available.</td></tr>
+                <tr><td colSpan="5">{t('No location scores are available.')}</td></tr>
               )}
             </tbody>
           </table>
@@ -240,10 +242,10 @@ export default function AuthorityDashboard({ currentUser, onLogout }) {
 
       <div className="card mt-3">
         <div className="card-header" style={{ marginBottom: '0.5rem' }}>
-          <h3 className="card-title" style={{ fontSize: '1.1rem' }}>Place score trends</h3>
-          <p className="card-subtitle">Compare all six scores across the selected period.</p>
+          <h3 className="card-title" style={{ fontSize: '1.1rem' }}>{t('Place score trends')}</h3>
+          <p className="card-subtitle">{t('Compare all six scores across the selected period.')}</p>
         </div>
-        <FormField label="Location" htmlFor="authority-trend-location">
+        <FormField label={t('Location')} htmlFor="authority-trend-location">
           <select id="authority-trend-location" className="form-control input-no-prefix"
             value={trendLocationId}
             onChange={(event) => setTrendLocationId(event.target.value)}>
@@ -255,13 +257,13 @@ export default function AuthorityDashboard({ currentUser, onLogout }) {
             <ScoreTrend key={trendLocationId} locationId={trendLocationId}
               locationName={locationScores.find((place) => String(place.id) === String(trendLocationId))?.name || 'Location'} />
           </Suspense>
-          : <EmptyState title="No locations available" description="Score history will appear when a mapped location is available." />}
+          : <EmptyState title={t('No locations available')} description={t('Score history will appear when a mapped location is available.')} />}
       </div>
 
       <div className="card mt-3">
         <div className="card-header" style={{ marginBottom: '0.25rem' }}>
-          <h3 className="card-title" style={{ fontSize: '1.1rem' }}>Citizen-added places</h3>
-          <p className="card-subtitle">Hide spam locations from citizens and the public map, or restore them.</p>
+          <h3 className="card-title" style={{ fontSize: '1.1rem' }}>{t('Citizen-added places')}</h3>
+          <p className="card-subtitle">{t('Hide spam locations from citizens and the public map, or restore them.')}</p>
         </div>
         {placeModerationError && (
           <div className="alert alert-error mt-2" role="alert">
@@ -271,7 +273,7 @@ export default function AuthorityDashboard({ currentUser, onLogout }) {
         <div className="reports-list">
           {citizenPlaces.length === 0 && !placeModerationError ? (
             <p className="card-subtitle" style={{ textAlign: 'center', padding: '1rem' }}>
-              No citizen-added places yet.
+              {t('No citizen-added places yet.')}
             </p>
           ) : citizenPlaces.map((place) => (
             <article key={place.id} className="report-item citizen-place-row">
@@ -281,7 +283,7 @@ export default function AuthorityDashboard({ currentUser, onLogout }) {
                   {place.address || `${place.latitude.toFixed(5)}, ${place.longitude.toFixed(5)}`}
                 </span>
                 <span className={`status-badge ${place.status === 'active' ? 'status-badge-resolved' : 'status-badge-submitted'}`}>
-                  {place.status === 'active' ? 'Visible' : 'Hidden'}
+                  {t(place.status === 'active' ? 'Visible' : 'Hidden')}
                 </span>
               </div>
               <button
@@ -291,8 +293,8 @@ export default function AuthorityDashboard({ currentUser, onLogout }) {
                 onClick={() => handlePlaceStatus(place, place.status === 'active' ? 'hidden' : 'active')}
               >
                 {placeActionBusy === place.id
-                  ? 'Updating…'
-                  : place.status === 'active' ? 'Hide' : 'Restore'}
+                  ? t('Updating…')
+                  : t(place.status === 'active' ? 'Hide' : 'Restore')}
               </button>
             </article>
           ))}
@@ -301,8 +303,8 @@ export default function AuthorityDashboard({ currentUser, onLogout }) {
 
       <div className="card mt-3">
         <div className="card-header" style={{ marginBottom: '0.25rem' }}>
-          <h3 className="card-title" style={{ fontSize: '1.1rem' }}>Reports by Category</h3>
-          <p className="card-subtitle">Select a category to view its citizen reports</p>
+          <h3 className="card-title" style={{ fontSize: '1.1rem' }}>{t('Reports by Category')}</h3>
+          <p className="card-subtitle">{t('Select a category to view its citizen reports')}</p>
         </div>
         <div className="activity-stats-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(145px, 1fr))' }}>
           {categories.map((category) => (
@@ -320,7 +322,7 @@ export default function AuthorityDashboard({ currentUser, onLogout }) {
               }}
             >
               <div className="stat-number">{categoryCounts[category] || 0}</div>
-              <div className="stat-label">{category}</div>
+              <div className="stat-label">{t(category)}</div>
             </button>
           ))}
         </div>
@@ -328,14 +330,14 @@ export default function AuthorityDashboard({ currentUser, onLogout }) {
 
       <div className="card mt-3">
         <div className="card-header" style={{ marginBottom: '0.25rem' }}>
-          <h3 className="card-title" style={{ fontSize: '1.1rem' }}>Report Status Counts</h3>
-          <p className="card-subtitle">All reports currently in the system</p>
+          <h3 className="card-title" style={{ fontSize: '1.1rem' }}>{t('Report Status Counts')}</h3>
+          <p className="card-subtitle">{t('All reports currently in the system')}</p>
         </div>
         <div className="activity-stats-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(115px, 1fr))' }}>
           {Object.entries(STATUS_LABELS).map(([status, label]) => (
             <div className="stat-card" key={status}>
               <div className="stat-number">{summary[status] || 0}</div>
-              <div className="stat-label">{label}</div>
+              <div className="stat-label">{t(label)}</div>
             </div>
           ))}
         </div>
@@ -343,8 +345,8 @@ export default function AuthorityDashboard({ currentUser, onLogout }) {
 
       <div className="card mt-3">
         <div className="card-header" style={{ marginBottom: '0.25rem' }}>
-          <h3 className="card-title" style={{ fontSize: '1.1rem' }}>All Reports</h3>
-          <p className="card-subtitle">Filter by category, assigned department, or calculated priority</p>
+          <h3 className="card-title" style={{ fontSize: '1.1rem' }}>{t('All Reports')}</h3>
+          <p className="card-subtitle">{t('Filter by category, assigned department, or calculated priority')}</p>
         </div>
 
         <ReportFilters
@@ -362,7 +364,7 @@ export default function AuthorityDashboard({ currentUser, onLogout }) {
             onClick={() => loadReports(filters)}
             disabled={isLoading}
           >
-            <RefreshCw size={15} /><span>Refresh</span>
+            <RefreshCw size={15} /><span>{t('Refresh')}</span>
           </button>
         </div>
 
@@ -376,56 +378,60 @@ export default function AuthorityDashboard({ currentUser, onLogout }) {
           {isLoading ? (
             <Skeleton lines={4} />
           ) : reports.length === 0 ? (
-            <EmptyState title="No matching reports" description="Try changing your search or filters." />
+            <EmptyState title={t('No matching reports')} description={t('Try changing your search or filters.')} />
           ) : reports.map((report) => (
             <article key={report.id} className="report-item" style={{ alignItems: 'flex-start' }}>
               <div className="report-item-main" style={{ flex: 1, minWidth: 0 }}>
                 <span className="report-item-title">{report.title}</span>
                 <span className="report-item-location">{report.location}</span>
-                <span className="card-subtitle">{report.category} · {report.department || 'Unassigned'}</span>
+                <span className="card-subtitle">{t(report.category)} · {report.department || t('Unassigned')}</span>
                 <div className="report-card-badges">
-                  <Badge tone="neutral">{report.confirmationCount || 0} confirmations</Badge>
-                  {report.groupReportCount > 1 && <Badge tone="status">Issue with {report.groupReportCount} reports</Badge>}
+                  <Badge tone="neutral">{t('{count} confirmations', { count: formatNumber(report.confirmationCount || 0) })}</Badge>
+                  {report.groupReportCount > 1 && <Badge tone="status">{t('Issue with {count} reports', { count: formatNumber(report.groupReportCount) })}</Badge>}
                 </div>
                 <ReportPhotos report={report} />
                 {report.aiCategory && (
                   <span className="card-subtitle">
-                    AI: {report.aiCategory} · {report.aiSeverity} severity · {report.aiSentiment} sentiment
+                    {t('AI: {category} · {severity} severity · {sentiment} sentiment', {
+                      category: report.aiCategory,
+                      severity: t(report.aiSeverity),
+                      sentiment: t(report.aiSentiment),
+                    })}
                   </span>
                 )}
-                {report.verified && <Badge tone="score-green">NGO Verified</Badge>}
+                {report.verified && <Badge tone="score-green">{t('NGO Verified')}</Badge>}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.4rem' }}>
                 <Badge tone="priority" style={{ color: PRIORITY_COLORS[report.priority] || PRIORITY_COLORS.medium }}>
                   {(report.priority || 'medium').toUpperCase()}
                 </Badge>
                 <Badge tone={report.status === 'resolved' ? 'score-green' : report.status === 'in_progress' ? 'score-yellow' : 'status'}>
-                  {STATUS_LABELS[report.status] || report.status}
+                  {t(STATUS_LABELS[report.status] || report.status)}
                 </Badge>
               </div>
               {report.fakeFlagged === 1 && (
-                <Badge tone="score-red" className="fake-report-badge">Flagged as fake · priority reduced</Badge>
+                <Badge tone="score-red" className="fake-report-badge">{t('Flagged as fake · priority reduced')}</Badge>
               )}
               <div className="authority-report-actions">
-                <FormField label="Department" htmlFor={`assign-${report.id}`}>
+                <FormField label={t('Department')} htmlFor={`assign-${report.id}`}>
                   <select id={`assign-${report.id}`} className="form-control input-no-prefix"
                     value={actionDrafts[report.id]?.department ?? report.department ?? ''}
                     onChange={(event) => updateDraft(report.id, 'department', event.target.value)}>
-                    <option value="">Choose department</option>
-                    {departmentOptions.map((department) => <option value={department} key={department}>{department}</option>)}
+                    <option value="">{t('Choose department')}</option>
+                    {departmentOptions.map((department) => <option value={department} key={department}>{t(department)}</option>)}
                   </select>
                   <button type="button" className="btn btn-secondary btn-sm mt-1"
                     disabled={!actionDrafts[report.id]?.department || actionBusy === `${report.id}-assign`}
-                    onClick={() => runReportAction(report, 'assign', { department: actionDrafts[report.id].department })}>Assign</button>
+                    onClick={() => runReportAction(report, 'assign', { department: actionDrafts[report.id].department })}>{t('Assign')}</button>
                 </FormField>
-                <FormField label="Priority (reason required)" htmlFor={`priority-${report.id}`}>
+                <FormField label={t('Priority (reason required)')} htmlFor={`priority-${report.id}`}>
                   <select id={`priority-${report.id}`} className="form-control input-no-prefix"
                     value={actionDrafts[report.id]?.priority ?? report.priority ?? 'medium'}
                     onChange={(event) => updateDraft(report.id, 'priority', event.target.value)}>
-                    {['low', 'medium', 'high', 'critical'].map((priority) => <option value={priority} key={priority}>{priority}</option>)}
+                    {['low', 'medium', 'high', 'critical'].map((priority) => <option value={priority} key={priority}>{t(priority)}</option>)}
                   </select>
-                  <input className="form-control input-no-prefix mt-1" aria-label={`Reason for priority change on report ${report.id}`}
-                    maxLength={500} placeholder="Explain the priority change"
+                  <input className="form-control input-no-prefix mt-1" aria-label={t('Reason for priority change on report {id}', { id: report.id })}
+                    maxLength={500} placeholder={t('Explain the priority change')}
                     value={actionDrafts[report.id]?.priorityReason || ''}
                     onChange={(event) => updateDraft(report.id, 'priorityReason', event.target.value)} />
                   <button type="button" className="btn btn-secondary btn-sm mt-1"
@@ -433,30 +439,30 @@ export default function AuthorityDashboard({ currentUser, onLogout }) {
                     onClick={() => runReportAction(report, 'priority', {
                       priority: actionDrafts[report.id]?.priority || report.priority || 'medium',
                       reason: actionDrafts[report.id].priorityReason,
-                    })}>Update priority</button>
+                    })}>{t('Update priority')}</button>
                 </FormField>
-                <FormField label="Public response" htmlFor={`response-${report.id}`}>
+                <FormField label={t('Public response')} htmlFor={`response-${report.id}`}>
                   <textarea id={`response-${report.id}`} className="form-control input-no-prefix" rows={2} maxLength={2000}
-                    value={actionDrafts[report.id]?.response || ''} placeholder="Response visible to the citizen"
+                    value={actionDrafts[report.id]?.response || ''} placeholder={t('Response visible to the citizen')}
                     onChange={(event) => updateDraft(report.id, 'response', event.target.value)} />
                   <button type="button" className="btn btn-secondary btn-sm mt-1"
                     disabled={(actionDrafts[report.id]?.response || '').trim().length < 3 || actionBusy === `${report.id}-respond`}
-                    onClick={() => runReportAction(report, 'respond', { response: actionDrafts[report.id].response })}>Send response</button>
+                    onClick={() => runReportAction(report, 'respond', { response: actionDrafts[report.id].response })}>{t('Send response')}</button>
                 </FormField>
                 <div className="authority-action-buttons">
                   <button type="button" className="btn btn-secondary btn-sm"
                     disabled={actionBusy === `${report.id}-history`}
                     onClick={() => toggleReportHistory(report.id)}>
-                    {reportHistory[report.id] ? 'Hide history' : 'View history'}
+                    {t(reportHistory[report.id] ? 'Hide history' : 'View history')}
                   </button>
                   <button type="button" className="btn btn-primary btn-sm"
                     disabled={report.status === 'resolved' || actionBusy === `${report.id}-resolve`}
-                    onClick={() => runReportAction(report, 'resolve')}>Mark resolved</button>
+                    onClick={() => runReportAction(report, 'resolve')}>{t('Mark resolved')}</button>
                   <button type="button" className="btn btn-secondary btn-sm"
                     disabled={report.fakeFlagged === 1 || (actionDrafts[report.id]?.reason || '').trim().length < 5 || actionBusy === `${report.id}-flag`}
-                    onClick={() => runReportAction(report, 'flag', { reason: actionDrafts[report.id]?.reason })}>Flag as fake</button>
-                  <input aria-label={`Reason to flag report ${report.id}`} className="form-control input-no-prefix"
-                    maxLength={500} placeholder="Reason to flag as fake"
+                    onClick={() => runReportAction(report, 'flag', { reason: actionDrafts[report.id]?.reason })}>{t('Flag as fake')}</button>
+                  <input aria-label={t('Reason to flag report {id}', { id: report.id })} className="form-control input-no-prefix"
+                    maxLength={500} placeholder={t('Reason to flag as fake')}
                     value={actionDrafts[report.id]?.reason || ''}
                     onChange={(event) => updateDraft(report.id, 'reason', event.target.value)} />
                 </div>
@@ -464,9 +470,9 @@ export default function AuthorityDashboard({ currentUser, onLogout }) {
                   <ol className="report-history">
                     {reportHistory[report.id].map((event) => (
                       <li key={event.id}>
-                        <strong>{event.eventType.replaceAll('_', ' ')}</strong>
+                        <strong>{t(event.eventType.replaceAll('_', ' '))}</strong>
                         <span>{event.details}</span>
-                        <small>{event.actorName} · {new Date(event.createdAt).toLocaleString()}</small>
+                        <small>{event.actorName} · {formatDate(new Date(event.createdAt))}</small>
                       </li>
                     ))}
                   </ol>

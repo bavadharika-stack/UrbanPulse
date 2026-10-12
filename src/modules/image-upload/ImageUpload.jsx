@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
+import L from 'leaflet';
+import { MapContainer, Marker, TileLayer, useMapEvents } from 'react-leaflet';
 import {
   Camera,
   Upload,
@@ -11,11 +13,50 @@ import {
   MapPin,
   FileText,
 } from 'lucide-react';
-import { confirmReport, createReport } from '../../api';
+import { confirmReport, createReport, getLocations } from '../../api';
 import reportCategories from '../../../shared/reportCategories.json';
 import { Button, FormField, Modal } from '../../shared/ui';
+import VoiceInputButton from '../../shared/VoiceInputButton';
+import { useI18n } from '../../i18n/I18nProvider';
+import { findNearestPlace } from '../../shared/nearestPlace.mjs';
+import { suggestCategory } from '../../shared/categorySuggestion.mjs';
 
-export default function ImageUpload({ currentUser, onBackToDashboard, initialLocation = '' }) {
+const reportPinIcon = L.divIcon({
+  className: 'place-marker-wrapper',
+  html: '<span class="place-marker" style="background:#0284c7"></span>',
+  iconSize: [24, 24],
+  iconAnchor: [12, 12],
+});
+
+function ReportLocationPin({ position, onChange }) {
+  useMapEvents({
+    click({ latlng }) {
+      onChange({ latitude: latlng.lat, longitude: latlng.lng });
+    },
+  });
+  return position ? (
+    <Marker
+      position={[position.latitude, position.longitude]}
+      icon={reportPinIcon}
+      draggable
+      eventHandlers={{
+        dragend(event) {
+          const point = event.target.getLatLng();
+          onChange({ latitude: point.lat, longitude: point.lng });
+        },
+      }}
+    />
+  ) : null;
+}
+
+export default function ImageUpload({
+  currentUser,
+  onBackToDashboard,
+  initialLocation = '',
+  initialPhoto = null,
+  quickReport = false,
+}) {
+  const { t } = useI18n();
   const [formData, setFormData] = useState({
     location: initialLocation,
     category: '',
@@ -34,6 +75,12 @@ export default function ImageUpload({ currentUser, onBackToDashboard, initialLoc
   const [allowDuplicate, setAllowDuplicate] = useState(false);
   const [confirmationOnly, setConfirmationOnly] = useState(false);
   const [isConfirmingDuplicate, setIsConfirmingDuplicate] = useState(false);
+  const [autoCategory, setAutoCategory] = useState('');
+  const [categoryManuallyChanged, setCategoryManuallyChanged] = useState(false);
+  const [findingLocation, setFindingLocation] = useState(false);
+  const [locationMessage, setLocationMessage] = useState('');
+  const [showLocationMap, setShowLocationMap] = useState(false);
+  const [mapPoint, setMapPoint] = useState(null);
 
   const fileInputRef = useRef(null);
   const imagePreviewUrlRef = useRef('');
@@ -56,6 +103,16 @@ export default function ImageUpload({ currentUser, onBackToDashboard, initialLoc
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
+    if (['title', 'description'].includes(name) && !categoryManuallyChanged) {
+      const nextCategory = suggestCategory(`${name === 'title' ? value : formData.title} ${name === 'description' ? value : formData.description}`);
+      if (nextCategory && reportCategories.includes(nextCategory)) {
+        setAutoCategory(nextCategory);
+        setFormData((prev) => ({ ...prev, category: nextCategory }));
+      } else if (autoCategory && formData.category === autoCategory) {
+        setAutoCategory('');
+        setFormData((prev) => ({ ...prev, category: '' }));
+      }
+    }
 
     if (errors[name]) {
       setErrors((prev) => ({ ...prev, [name]: '' }));
@@ -75,7 +132,7 @@ export default function ImageUpload({ currentUser, onBackToDashboard, initialLoc
       updateImagePreview('');
       setErrors((prev) => ({
         ...prev,
-        image: 'Please select a valid image file (JPG, PNG, WebP).',
+        image: t('Please select a valid image file (JPG, PNG, WebP).'),
       }));
       e.target.value = '';
       return;
@@ -85,7 +142,7 @@ export default function ImageUpload({ currentUser, onBackToDashboard, initialLoc
       updateImagePreview('');
       setErrors((prev) => ({
         ...prev,
-        image: 'Image must be 5 MB or smaller.',
+        image: t('Image must be 5 MB or smaller.'),
       }));
       e.target.value = '';
       return;
@@ -96,6 +153,67 @@ export default function ImageUpload({ currentUser, onBackToDashboard, initialLoc
     setSelectedFile(file);
     const previewUrl = URL.createObjectURL(file);
     updateImagePreview(previewUrl);
+  };
+
+  const addVoiceTranscript = (field, transcript) => {
+    setFormData((current) => ({
+      ...current,
+      [field]: current[field] ? `${current[field].trimEnd()} ${transcript}` : transcript,
+    }));
+    if (field === 'description' && !categoryManuallyChanged) {
+      const nextCategory = suggestCategory(`${formData.title} ${formData.description} ${transcript}`);
+      if (nextCategory && reportCategories.includes(nextCategory)) {
+        setAutoCategory(nextCategory);
+        setFormData((current) => ({ ...current, category: nextCategory }));
+      } else if (autoCategory && formData.category === autoCategory) {
+        setAutoCategory('');
+        setFormData((current) => ({ ...current, category: '' }));
+      }
+    }
+  };
+
+  const useCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      setLocationMessage(t('Location unavailable. Enter the area or choose a place on the map.'));
+      return;
+    }
+    setFindingLocation(true);
+    setLocationMessage('');
+    navigator.geolocation.getCurrentPosition(async ({ coords }) => {
+      try {
+        const locations = await getLocations();
+        const nearest = findNearestPlace(
+          { latitude: coords.latitude, longitude: coords.longitude },
+          locations,
+          10_000,
+        );
+        if (nearest) {
+          setFormData((current) => ({ ...current, location: nearest.place.name }));
+          setLocationMessage(nearest.place.name);
+        } else {
+          setMapPoint({ latitude: coords.latitude, longitude: coords.longitude });
+          setShowLocationMap(true);
+          setLocationMessage(t('We couldn’t find a nearby saved place. Enter the area or choose a place on the map.'));
+        }
+      } catch (error) {
+        setLocationMessage(error.message || t('We couldn’t find a nearby saved place. Enter the area or choose a place on the map.'));
+      } finally {
+        setFindingLocation(false);
+      }
+    }, (error) => {
+      setFindingLocation(false);
+      setLocationMessage(error.code === error.PERMISSION_DENIED
+        ? t('Location permission was denied. You can still enter the place manually.')
+        : t('Location unavailable. Enter the area or choose a place on the map.'));
+    }, { enableHighAccuracy: false, timeout: 10_000, maximumAge: 60_000 });
+  };
+
+  const selectMapPoint = ({ latitude, longitude }) => {
+    setMapPoint({ latitude, longitude });
+    setFormData((current) => ({
+      ...current,
+      location: `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`,
+    }));
   };
 
   // Trigger hidden file input
@@ -117,30 +235,30 @@ export default function ImageUpload({ currentUser, onBackToDashboard, initialLoc
     const newErrors = {};
 
     if (!formData.location.trim()) {
-      newErrors.location = 'Please enter the location or area.';
+      newErrors.location = t('Please enter the location or area.');
     }
 
     if (!formData.category) {
-      newErrors.category = 'Please select an issue category.';
+      newErrors.category = t('Please select an issue category.');
     }
 
     if (!formData.title.trim()) {
-      newErrors.title = 'Please enter an issue title.';
+      newErrors.title = t('Please enter an issue title.');
     }
 
     if (!formData.description.trim()) {
-      newErrors.description = 'Please provide an issue description.';
+      newErrors.description = t('Please provide an issue description.');
     }
 
     if (!selectedFile) {
-      newErrors.image = 'Please select an image.';
+      newErrors.image = t('Please select an image.');
     }
 
     setErrors(newErrors);
 
     const hasErrors = Object.keys(newErrors).length > 0;
     if (hasErrors) {
-      setGeneralError('Please fill in all required fields and attach an image.');
+      setGeneralError(t('Please fill in all required fields and attach an image.'));
     }
 
     return !hasErrors;
@@ -217,6 +335,11 @@ export default function ImageUpload({ currentUser, onBackToDashboard, initialLoc
       title: '',
       description: '',
     });
+    setAutoCategory('');
+    setCategoryManuallyChanged(false);
+    setLocationMessage('');
+    setMapPoint(null);
+    setShowLocationMap(false);
     setSelectedFile(null);
     setErrors({});
     setGeneralError('');
@@ -234,6 +357,12 @@ export default function ImageUpload({ currentUser, onBackToDashboard, initialLoc
     if (imagePreviewUrlRef.current) URL.revokeObjectURL(imagePreviewUrlRef.current);
   }, []);
 
+  useEffect(() => {
+    if (!initialPhoto) return;
+    setSelectedFile(initialPhoto);
+    updateImagePreview(URL.createObjectURL(initialPhoto));
+  }, [initialPhoto]);
+
   // ==========================================
   // Success Confirmation Screen
   // ==========================================
@@ -244,26 +373,26 @@ export default function ImageUpload({ currentUser, onBackToDashboard, initialLoc
           <div className="success-icon-badge">
             <CheckCircle2 size={28} />
           </div>
-          <h2 className="card-title">{confirmationOnly ? 'Thanks for confirming this report.' : 'Report submitted successfully.'}</h2>
+          <h2 className="card-title">{confirmationOnly ? t('Thanks for confirming this report.') : t('Report submitted successfully.')}</h2>
           <p className="card-subtitle">
             {confirmationOnly
-              ? 'Your confirmation was added to the existing issue and its priority has been updated.'
-              : 'Your issue details and photo evidence have been recorded for municipal action.'}
+              ? t('Your confirmation was added to the existing issue and its priority has been updated.')
+              : t('Your issue details and photo evidence have been recorded for municipal action.')}
           </p>
 
           {/* Submitted Report Summary */}
           {submittedReport && (
             <div className="info-box mt-3" style={{ textAlign: 'left' }}>
               <div className="info-row">
-                <span className="info-label">Location:</span>
+                <span className="info-label">{t('Location:')}</span>
                 <span className="info-value">{submittedReport.location}</span>
               </div>
               <div className="info-row">
-                <span className="info-label">Issue Title:</span>
+                <span className="info-label">{t('Issue Title:')}</span>
                 <span className="info-value">{submittedReport.title}</span>
               </div>
               <div className="info-row" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '0.2rem' }}>
-                <span className="info-label">Description:</span>
+                <span className="info-label">{t('Description:')}</span>
                 <span className="info-value" style={{ fontWeight: 400, color: '#334155' }}>
                   {submittedReport.description}
                 </span>
@@ -275,7 +404,7 @@ export default function ImageUpload({ currentUser, onBackToDashboard, initialLoc
                   <div className="image-preview-wrapper" style={{ maxHeight: '180px' }}>
                     <img
                       src={submittedReport.previewUrl}
-                      alt="Submitted evidence"
+                      alt={t('Submitted evidence')}
                       className="image-preview-img"
                       style={{ maxHeight: '180px' }}
                     />
@@ -289,7 +418,7 @@ export default function ImageUpload({ currentUser, onBackToDashboard, initialLoc
                     </div>
                     <span className="status-indicator">
                       <span className="status-dot"></span>
-                      <span>Recorded</span>
+                      <span>{t('Recorded')}</span>
                     </span>
                   </div>
                 </div>
@@ -305,7 +434,7 @@ export default function ImageUpload({ currentUser, onBackToDashboard, initialLoc
               onClick={handleReset}
             >
               <RefreshCw size={15} />
-              <span>Submit Another Report</span>
+              <span>{t('Submit Another Report')}</span>
             </button>
             <button
               type="button"
@@ -314,7 +443,7 @@ export default function ImageUpload({ currentUser, onBackToDashboard, initialLoc
               onClick={onBackToDashboard}
             >
               <ArrowLeft size={16} />
-              <span>Back to Dashboard</span>
+              <span>{t('Back to Dashboard')}</span>
             </button>
           </div>
         </div>
@@ -337,12 +466,13 @@ export default function ImageUpload({ currentUser, onBackToDashboard, initialLoc
             style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.75rem' }}
           >
             <ArrowLeft size={15} />
-            <span>Back to Dashboard</span>
+            <span>{t('Back to Dashboard')}</span>
           </button>
-          <h2 className="card-title">Report an Issue</h2>
+          <h2 className="card-title">{quickReport ? t('Quick report') : t('Report an Issue')}</h2>
           <p className="card-subtitle">
-            Provide details and photo evidence of the public space issue for municipal review.
+            {t('Provide details and photo evidence of the public space issue for municipal review.')}
           </p>
+          {quickReport && <span className="quick-report-step">{t('Photo added. Add the location and details to finish your report.')}</span>}
         </div>
 
         {/* Top General Validation Alert */}
@@ -355,7 +485,7 @@ export default function ImageUpload({ currentUser, onBackToDashboard, initialLoc
 
         <form onSubmit={handleSubmit} noValidate>
           {/* 1. Location / Area */}
-          <FormField label={<>Location / Area <span className="text-danger">*</span></>} htmlFor="report-location" error={errors.location}>
+          <FormField label={<>{t('Location / Area')} <span className="text-danger">*</span></>} htmlFor="report-location" error={errors.location}>
             <div className="input-group">
               <span className="input-prefix">
                 <MapPin size={17} />
@@ -365,41 +495,75 @@ export default function ImageUpload({ currentUser, onBackToDashboard, initialLoc
                 name="location"
                 type="text"
                 className={`form-control ${errors.location ? 'is-invalid' : ''}`}
-                placeholder="e.g. Anna Nagar, Chennai"
+                placeholder={t('e.g. Anna Nagar, Chennai')}
                 value={formData.location}
                 onChange={handleInputChange}
                 disabled={isSubmitting}
                 required
               />
             </div>
+            <button type="button" className="btn btn-secondary btn-sm mt-1" onClick={useCurrentLocation} disabled={findingLocation || isSubmitting}>
+              <MapPin size={15} /><span>{t(findingLocation ? 'Finding your location…' : 'Use my location')}</span>
+            </button>
+            <button type="button" className="btn btn-secondary btn-sm mt-1" onClick={() => setShowLocationMap((visible) => !visible)} aria-expanded={showLocationMap}>
+              <MapPin size={15} /><span>{t(showLocationMap ? 'Close map picker' : 'Choose on map')}</span>
+            </button>
+            {locationMessage && <span className="location-hint" role="status">{locationMessage}</span>}
+            {showLocationMap && (
+              <div className="report-location-map" aria-label={t('Choose report location on map')}>
+                <p className="card-subtitle">{t('Tap the map or drag the pin to set the issue location.')}</p>
+                <MapContainer
+                  center={mapPoint ? [mapPoint.latitude, mapPoint.longitude] : [13.0475, 80.2209]}
+                  zoom={mapPoint ? 15 : 11}
+                  scrollWheelZoom={false}
+                  className="report-location-map-canvas"
+                >
+                  <TileLayer
+                    attribution="&copy; OpenStreetMap contributors"
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  />
+                  <ReportLocationPin position={mapPoint} onChange={selectMapPoint} />
+                </MapContainer>
+                {mapPoint && <span className="location-hint" role="status">
+                  {t('Selected coordinates')}: {mapPoint.latitude.toFixed(5)}, {mapPoint.longitude.toFixed(5)}
+                </span>}
+              </div>
+            )}
           </FormField>
 
           {/* 2. Issue Category */}
           <div className="form-group">
             <label htmlFor="report-category" className="form-label">
-              Issue Category <span className="text-danger">*</span>
+              {t('Issue Category')} <span className="text-danger">*</span>
             </label>
             <select
               id="report-category"
               name="category"
               className={`form-control ${errors.category ? 'is-invalid' : ''}`}
               value={formData.category}
-              onChange={handleInputChange}
+              onChange={(event) => {
+                setCategoryManuallyChanged(true);
+                setAutoCategory('');
+                handleInputChange(event);
+              }}
               disabled={isSubmitting}
               required
             >
-              <option value="">— Select a category —</option>
+              <option value="">— {t('Select a category')} —</option>
               {reportCategories.map((category) => (
-                <option key={category} value={category}>{category}</option>
+                <option key={category} value={category}>{t(category)}</option>
               ))}
             </select>
+            {autoCategory && !categoryManuallyChanged && (
+              <span className="category-suggestion" role="status">{t('Suggested category')}: {t(autoCategory)}</span>
+            )}
             {errors.category && <div className="form-feedback">{errors.category}</div>}
           </div>
 
           {/* 3. Issue Title */}
           <div className="form-group">
             <label htmlFor="report-title" className="form-label">
-              Issue Title <span className="text-danger">*</span>
+              {t('Issue Title')} <span className="text-danger">*</span>
             </label>
             <div className="input-group">
               <span className="input-prefix">
@@ -410,7 +574,7 @@ export default function ImageUpload({ currentUser, onBackToDashboard, initialLoc
                 name="title"
                 type="text"
                 className={`form-control ${errors.title ? 'is-invalid' : ''}`}
-                placeholder="e.g. Damaged pathway"
+                placeholder={t('e.g. Damaged pathway')}
                 value={formData.title}
                 onChange={handleInputChange}
                 disabled={isSubmitting}
@@ -423,13 +587,14 @@ export default function ImageUpload({ currentUser, onBackToDashboard, initialLoc
           {/* 3. Issue Description */}
           <div className="form-group">
             <label htmlFor="report-description" className="form-label">
-              Issue Description <span className="text-danger">*</span>
+              {t('Issue Description')} <span className="text-danger">*</span>
             </label>
+            <VoiceInputButton onTranscript={(transcript) => addVoiceTranscript('description', transcript)} disabled={isSubmitting} />
             <textarea
               id="report-description"
               name="description"
               className={`form-control ${errors.description ? 'is-invalid' : ''}`}
-              placeholder="e.g. The pathway near the park entrance is damaged and difficult for pedestrians to use."
+              placeholder={t('Describe the issue, what is affected, and when it happens.')}
               value={formData.description}
               onChange={handleInputChange}
               disabled={isSubmitting}
@@ -442,7 +607,7 @@ export default function ImageUpload({ currentUser, onBackToDashboard, initialLoc
           {/* 4. Image Upload & Preview */}
           <div className="form-group">
             <label className="form-label">
-              Evidence Image <span className="text-danger">*</span>
+              {t('Evidence Image')} <span className="text-danger">*</span>
             </label>
 
             {/* Hidden native file input */}
@@ -474,8 +639,8 @@ export default function ImageUpload({ currentUser, onBackToDashboard, initialLoc
                 <div className="upload-dropzone-icon">
                   <Camera size={24} />
                 </div>
-                <div className="upload-dropzone-text">Click to select issue photo</div>
-                <div className="upload-dropzone-hint">JPG, PNG, or WebP; maximum 5 MB</div>
+                <div className="upload-dropzone-text">{t('Click to select issue photo')}</div>
+                <div className="upload-dropzone-hint">{t('JPG, PNG, or WebP; maximum 5 MB')}</div>
                 <button
                   type="button"
                   className="btn btn-secondary btn-sm mt-2"
@@ -485,7 +650,7 @@ export default function ImageUpload({ currentUser, onBackToDashboard, initialLoc
                   }}
                 >
                   <Upload size={14} />
-                  <span>Browse Files</span>
+                  <span>{t('Browse Files')}</span>
                 </button>
               </div>
             ) : (
@@ -494,7 +659,7 @@ export default function ImageUpload({ currentUser, onBackToDashboard, initialLoc
                 <div className="image-preview-wrapper">
                   <img
                     src={imagePreviewUrl}
-                    alt="Public space issue preview"
+                    alt={t('Issue photo preview')}
                     className="image-preview-img"
                   />
                 </div>
@@ -510,20 +675,20 @@ export default function ImageUpload({ currentUser, onBackToDashboard, initialLoc
                       type="button"
                       className="btn btn-secondary btn-sm"
                       onClick={handleSelectClick}
-                      title="Choose a different image"
+                      title={t('Choose a different image')}
                     >
                       <RefreshCw size={13} />
-                      <span>Change</span>
+                      <span>{t('Change')}</span>
                     </button>
                     <button
                       type="button"
                       className="btn btn-danger-outline btn-sm"
                       onClick={handleRemoveImage}
-                      title="Remove selected image"
+                      title={t('Remove selected image')}
                       id="btn-remove-image"
                     >
                       <Trash2 size={13} />
-                      <span>Remove</span>
+                      <span>{t('Remove')}</span>
                     </button>
                   </div>
                 </div>
@@ -540,7 +705,7 @@ export default function ImageUpload({ currentUser, onBackToDashboard, initialLoc
               className="btn btn-secondary"
               onClick={onBackToDashboard}
             >
-              <span>Cancel</span>
+              <span>{t('Cancel')}</span>
             </button>
 
             <button
@@ -552,11 +717,11 @@ export default function ImageUpload({ currentUser, onBackToDashboard, initialLoc
               {isSubmitting ? (
                 <>
                   <span className="spinner-border"></span>
-                  <span>Submitting Report...</span>
+                  <span>{t('Submitting Report...')}</span>
                 </>
               ) : (
                 <>
-                  <span>Submit Report</span>
+                  <span>{t('Submit Report')}</span>
                   <ArrowRight size={16} />
                 </>
               )}
@@ -566,12 +731,12 @@ export default function ImageUpload({ currentUser, onBackToDashboard, initialLoc
       </div>
       <Modal
         open={Boolean(duplicateReport)}
-        title="A similar issue already exists"
+        title={t('A similar issue already exists')}
         onClose={() => setDuplicateReport(null)}
       >
         {duplicateReport && (
           <div className="duplicate-report-prompt">
-            <p>There is already an open report at this location that may describe the same issue:</p>
+            <p>{t('There is already an open report at this location that may describe the same issue:')}</p>
             <strong>{duplicateReport.title}</strong>
             <span>{duplicateReport.location} · {duplicateReport.category}</span>
             <p>{duplicateReport.description}</p>
@@ -581,11 +746,11 @@ export default function ImageUpload({ currentUser, onBackToDashboard, initialLoc
                 setDuplicateReport(null);
                 submitReport(true);
               }}>
-                Submit anyway
+                {t('Submit anyway')}
               </Button>
               {duplicateReport.citizenId !== currentUser?.id && (
                 <Button disabled={isConfirmingDuplicate} onClick={handleConfirmDuplicate}>
-                  {isConfirmingDuplicate ? 'Confirming…' : 'I see this too'}
+                  {isConfirmingDuplicate ? t('Confirming…') : t('I see this too')}
                 </Button>
               )}
             </div>

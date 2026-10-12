@@ -1073,6 +1073,32 @@ textarea.form-control {
   max-width: 540px;
 }
 
+.report-location-map {
+  margin-top: 0.75rem;
+}
+
+.report-location-map-canvas {
+  width: 100%;
+  height: 220px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  z-index: 0;
+}
+
+.location-hint,
+.category-suggestion {
+  display: block;
+  margin-top: 0.4rem;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.quick-report-step {
+  display: inline-block;
+  margin-top: 0.5rem;
+  color: var(--text-muted);
+}
+
 .upload-dropzone {
   border: 2px dashed #cbd5e1;
   background-color: var(--bg-subtle);

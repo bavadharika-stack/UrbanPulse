@@ -2,10 +2,12 @@ import React, { useState } from 'react';
 import { User, Building2, Mail, Lock, Eye, EyeOff, Tag, CheckCircle2, AlertCircle, ArrowRight } from 'lucide-react';
 import { registerAccount } from '../../api';
 import reportCategories from '../../../shared/reportCategories.json';
+import { useI18n } from '../../i18n/I18nProvider';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function Registration({ onNavigateToLogin }) {
+  const { t } = useI18n();
   const [accountType, setAccountType] = useState('citizen'); // 'citizen' | 'ngo'
   const [formData, setFormData] = useState({
     fullName: '',
@@ -72,7 +74,7 @@ export default function Registration({ onNavigateToLogin }) {
       }
     }
 
-    return error;
+    return error ? t(error) : error;
   };
 
   const handleChange = (e) => {
@@ -163,26 +165,26 @@ export default function Registration({ onNavigateToLogin }) {
             <CheckCircle2 size={28} />
           </div>
           <h2 className="card-title">
-            {isNgo ? 'NGO Account Created' : 'Account Created Successfully'}
+            {t(isNgo ? 'NGO Account Created' : 'Account Created Successfully')}
           </h2>
           <p className="card-subtitle">
-            Welcome to UrbanPulse, <strong>{registeredUser?.fullName || registeredUser?.organizationName}</strong>. {isNgo
+            {t('Welcome to UrbanPulse,')} <strong>{registeredUser?.fullName || registeredUser?.organizationName}</strong>. {t(isNgo
               ? 'Your NGO application is pending administrator approval. You can sign in to check its status.'
-              : 'Your citizen account is ready.'}
+              : 'Your citizen account is ready.')}
           </p>
 
           <div className="info-box">
             <div className="info-row">
-              <span className="info-label">Registered Email:</span>
+              <span className="info-label">{t('Registered Email:')}</span>
               <span className="info-value">{registeredUser?.email}</span>
             </div>
             <div className="info-row">
-              <span className="info-label">Account Role:</span>
-              <span className="info-value">{isNgo ? 'NGO Organization' : 'Citizen Contributor'}</span>
+              <span className="info-label">{t('Account Role:')}</span>
+              <span className="info-value">{t(isNgo ? 'NGO Organization' : 'Citizen Contributor')}</span>
             </div>
             {isNgo && registeredUser?.ngoType && (
               <div className="info-row">
-                <span className="info-label">NGO Type:</span>
+                <span className="info-label">{t('NGO Type:')}</span>
                 <span className="info-value">{registeredUser.ngoType}</span>
               </div>
             )}
@@ -194,7 +196,7 @@ export default function Registration({ onNavigateToLogin }) {
             className="btn btn-primary btn-block"
             onClick={() => onNavigateToLogin?.(registeredUser?.email)}
           >
-            <span>Proceed to Sign In</span>
+            <span>{t('Proceed to Sign In')}</span>
             <ArrowRight size={16} />
           </button>
 
@@ -203,7 +205,7 @@ export default function Registration({ onNavigateToLogin }) {
             className="btn btn-secondary btn-block mt-2"
             onClick={handleReset}
           >
-            Register Another Account
+            {t('Register Another Account')}
           </button>
         </div>
       </div>
@@ -216,19 +218,19 @@ export default function Registration({ onNavigateToLogin }) {
       <div className="card" id="registration-card">
         <div className="card-header">
           <h2 className="card-title">
-            {accountType === 'ngo' ? 'Create NGO Account' : 'Create Citizen Account'}
+            {t(accountType === 'ngo' ? 'Create NGO Account' : 'Create Citizen Account')}
           </h2>
           <p className="card-subtitle">
             {accountType === 'ngo'
-              ? 'Register your organization to coordinate and address civic community initiatives.'
-              : 'Register to participate in public space reporting and community feedback.'}
+              ? t('Register your organization to coordinate and address civic community initiatives.')
+              : t('Register to participate in public space reporting and community feedback.')}
           </p>
         </div>
 
         {/* Account Type Option */}
         <div className="form-group">
-          <label className="form-label">Account Type</label>
-          <div className="account-type-grid" role="radiogroup" aria-label="Account Type">
+          <label className="form-label">{t('Account Type')}</label>
+          <div className="account-type-grid" role="radiogroup" aria-label={t('Account Type')}>
             <button
               type="button"
               id="account-type-citizen"
@@ -237,7 +239,7 @@ export default function Registration({ onNavigateToLogin }) {
               aria-pressed={accountType === 'citizen'}
             >
               <User size={16} />
-              <span>Citizen</span>
+              <span>{t('Citizen')}</span>
             </button>
             <button
               type="button"
@@ -247,7 +249,7 @@ export default function Registration({ onNavigateToLogin }) {
               aria-pressed={accountType === 'ngo'}
             >
               <Building2 size={16} />
-              <span>NGO</span>
+              <span>{t('NGO')}</span>
             </button>
           </div>
         </div>
@@ -264,7 +266,7 @@ export default function Registration({ onNavigateToLogin }) {
           {accountType === 'citizen' && (
             <div className="form-group">
               <label htmlFor="reg-fullName" className="form-label">
-                Full Name <span className="text-danger">*</span>
+                {t('Full Name')} <span className="text-danger">*</span>
               </label>
               <div className="input-group">
                 <span className="input-prefix">
@@ -275,7 +277,7 @@ export default function Registration({ onNavigateToLogin }) {
                   name="fullName"
                   type="text"
                   className={`form-control ${errors.fullName ? 'is-invalid' : ''}`}
-                  placeholder="e.g. Priya Sharma"
+                  placeholder={t('e.g. Priya Sharma')}
                   value={formData.fullName}
                   onChange={handleChange}
                   disabled={isLoading}
@@ -291,7 +293,7 @@ export default function Registration({ onNavigateToLogin }) {
           {accountType === 'ngo' && (
             <div className="form-group">
               <label htmlFor="reg-orgName" className="form-label">
-                Organization Name <span className="text-danger">*</span>
+                {t('Organization Name')} <span className="text-danger">*</span>
               </label>
               <div className="input-group">
                 <span className="input-prefix">
@@ -302,7 +304,7 @@ export default function Registration({ onNavigateToLogin }) {
                   name="organizationName"
                   type="text"
                   className={`form-control ${errors.organizationName ? 'is-invalid' : ''}`}
-                  placeholder="e.g. Clean City Foundation"
+                  placeholder={t('e.g. Clean City Foundation')}
                   value={formData.organizationName}
                   onChange={handleChange}
                   disabled={isLoading}
@@ -317,7 +319,7 @@ export default function Registration({ onNavigateToLogin }) {
           {/* Email */}
           <div className="form-group">
             <label htmlFor="reg-email" className="form-label">
-              Email Address <span className="text-danger">*</span>
+              {t('Email Address')} <span className="text-danger">*</span>
             </label>
             <div className="input-group">
               <span className="input-prefix">
@@ -328,7 +330,7 @@ export default function Registration({ onNavigateToLogin }) {
                 name="email"
                 type="email"
                 className={`form-control ${errors.email ? 'is-invalid' : ''}`}
-                placeholder={accountType === 'ngo' ? 'e.g. contact@cleancity.org' : 'e.g. priya.sharma@example.com'}
+                placeholder={t(accountType === 'ngo' ? 'e.g. contact@cleancity.org' : 'e.g. priya.sharma@example.com')}
                 value={formData.email}
                 onChange={handleChange}
                 disabled={isLoading}
@@ -342,7 +344,7 @@ export default function Registration({ onNavigateToLogin }) {
           {/* Password */}
           <div className="form-group">
             <label htmlFor="reg-password" className="form-label">
-              Password <span className="text-danger">*</span>
+              {t('Password')} <span className="text-danger">*</span>
             </label>
             <div className="input-group">
               <span className="input-prefix">
@@ -353,7 +355,7 @@ export default function Registration({ onNavigateToLogin }) {
                 name="password"
                 type={showPassword ? 'text' : 'password'}
                 className={`form-control ${errors.password ? 'is-invalid' : ''}`}
-                placeholder="At least 6 characters"
+                placeholder={t('At least 6 characters')}
                 value={formData.password}
                 onChange={handleChange}
                 disabled={isLoading}
@@ -364,7 +366,7 @@ export default function Registration({ onNavigateToLogin }) {
                 type="button"
                 className="input-suffix-btn"
                 onClick={() => setShowPassword(!showPassword)}
-                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                aria-label={t(showPassword ? 'Hide password' : 'Show password')}
                 tabIndex={-1}
               >
                 {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -373,14 +375,14 @@ export default function Registration({ onNavigateToLogin }) {
             {errors.password ? (
               <div className="form-feedback">{errors.password}</div>
             ) : (
-              <div className="form-help">Minimum 6 characters required.</div>
+              <div className="form-help">{t('Minimum 6 characters required.')}</div>
             )}
           </div>
 
           {/* Confirm Password */}
           <div className="form-group">
             <label htmlFor="reg-confirmPassword" className="form-label">
-              Confirm Password <span className="text-danger">*</span>
+              {t('Confirm Password')} <span className="text-danger">*</span>
             </label>
             <div className="input-group">
               <span className="input-prefix">
@@ -391,7 +393,7 @@ export default function Registration({ onNavigateToLogin }) {
                 name="confirmPassword"
                 type={showConfirmPassword ? 'text' : 'password'}
                 className={`form-control ${errors.confirmPassword ? 'is-invalid' : ''}`}
-                placeholder="Re-enter your password"
+                placeholder={t('Re-enter your password')}
                 value={formData.confirmPassword}
                 onChange={handleChange}
                 disabled={isLoading}
@@ -402,7 +404,7 @@ export default function Registration({ onNavigateToLogin }) {
                 type="button"
                 className="input-suffix-btn"
                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
+                aria-label={t(showConfirmPassword ? 'Hide confirm password' : 'Show confirm password')}
                 tabIndex={-1}
               >
                 {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -417,7 +419,7 @@ export default function Registration({ onNavigateToLogin }) {
           {accountType === 'ngo' && (
             <div className="form-group">
               <label htmlFor="reg-ngoType" className="form-label">
-                NGO Type <span className="text-danger">*</span>
+                {t('NGO Type')} <span className="text-danger">*</span>
               </label>
               <div className="input-group">
                 <span className="input-prefix">
@@ -432,9 +434,9 @@ export default function Registration({ onNavigateToLogin }) {
                   disabled={isLoading}
                   required
                 >
-                  <option value="">Select NGO Type</option>
+                  <option value="">{t('Select NGO Type')}</option>
                   {reportCategories.map((category) => (
-                    <option key={category} value={category}>{category}</option>
+                    <option key={category} value={category}>{t(category)}</option>
                   ))}
                 </select>
               </div>
@@ -452,11 +454,11 @@ export default function Registration({ onNavigateToLogin }) {
             {isLoading ? (
               <>
                 <span className="spinner-border"></span>
-                <span>Registering Account...</span>
+                <span>{t('Registering Account...')}</span>
               </>
             ) : (
               <>
-                <span>{accountType === 'ngo' ? 'Create NGO Account' : 'Create Citizen Account'}</span>
+                <span>{t(accountType === 'ngo' ? 'Create NGO Account' : 'Create Citizen Account')}</span>
                 <ArrowRight size={16} />
               </>
             )}
@@ -464,13 +466,13 @@ export default function Registration({ onNavigateToLogin }) {
 
           {/* Link to Login */}
           <div className="card-footer-text">
-            <span>Already registered?</span>
+            <span>{t('Already registered?')}</span>
             <button
               type="button"
               className="link-button"
               onClick={() => onNavigateToLogin?.(formData.email)}
             >
-              Sign in here
+              {t('Sign in here')}
             </button>
           </div>
         </form>

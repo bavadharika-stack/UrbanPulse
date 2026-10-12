@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { Mail, Lock, Eye, EyeOff, AlertCircle, ArrowRight } from 'lucide-react';
 import { loginAccount } from '../../api';
+import { useI18n } from '../../i18n/I18nProvider';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function Login({ initialEmail = '', onLoginSuccess, onNavigateToRegister }) {
+  const { t } = useI18n();
   const [formData, setFormData] = useState({
     role: 'citizen',
     email: initialEmail || '',
@@ -30,7 +32,7 @@ export default function Login({ initialEmail = '', onLoginSuccess, onNavigateToR
         error = 'Password is required.';
       }
     }
-    return error;
+    return error ? t(error) : error;
   };
 
   const handleChange = (e) => {
@@ -76,9 +78,9 @@ export default function Login({ initialEmail = '', onLoginSuccess, onNavigateToR
     <div className="auth-page-container">
       <div className="card" id="login-card">
         <div className="card-header">
-          <h2 className="card-title">Sign In to UrbanPulse</h2>
+          <h2 className="card-title">{t('Sign In to UrbanPulse')}</h2>
           <p className="card-subtitle">
-            Choose your portal and sign in with the account created for that role.
+              {t('Choose your portal and sign in with the account created for that role.')}
           </p>
         </div>
 
@@ -91,7 +93,7 @@ export default function Login({ initialEmail = '', onLoginSuccess, onNavigateToR
 
         <form onSubmit={handleSubmit} noValidate>
           <div className="form-group">
-            <label htmlFor="login-role" className="form-label">Portal</label>
+            <label htmlFor="login-role" className="form-label">{t('Portal')}</label>
             <select
               id="login-role"
               name="role"
@@ -100,17 +102,17 @@ export default function Login({ initialEmail = '', onLoginSuccess, onNavigateToR
               onChange={handleChange}
               disabled={isLoading}
             >
-              <option value="citizen">Citizen</option>
-              <option value="ngo">NGO</option>
-              <option value="authority">Authority</option>
-              <option value="admin">Admin</option>
+              <option value="citizen">{t('Citizen')}</option>
+              <option value="ngo">{t('NGO')}</option>
+              <option value="authority">{t('Authority')}</option>
+              <option value="admin">{t('Admin')}</option>
             </select>
           </div>
 
           {/* Email */}
           <div className="form-group">
             <label htmlFor="login-email" className="form-label">
-              Email Address <span className="text-danger">*</span>
+              {t('Email Address')} <span className="text-danger">*</span>
             </label>
             <div className="input-group">
               <span className="input-prefix">
@@ -121,7 +123,7 @@ export default function Login({ initialEmail = '', onLoginSuccess, onNavigateToR
                 name="email"
                 type="email"
                 className={`form-control ${errors.email ? 'is-invalid' : ''}`}
-                placeholder="e.g. demo@urbanpulse.com"
+                placeholder={t('e.g. demo@urbanpulse.com')}
                 value={formData.email}
                 onChange={handleChange}
                 disabled={isLoading}
@@ -135,7 +137,7 @@ export default function Login({ initialEmail = '', onLoginSuccess, onNavigateToR
           {/* Password */}
           <div className="form-group">
             <label htmlFor="login-password" className="form-label">
-              Password <span className="text-danger">*</span>
+              {t('Password')} <span className="text-danger">*</span>
             </label>
             <div className="input-group">
               <span className="input-prefix">
@@ -146,7 +148,7 @@ export default function Login({ initialEmail = '', onLoginSuccess, onNavigateToR
                 name="password"
                 type={showPassword ? 'text' : 'password'}
                 className={`form-control ${errors.password ? 'is-invalid' : ''}`}
-                placeholder="Enter your password"
+                placeholder={t('Enter your password')}
                 value={formData.password}
                 onChange={handleChange}
                 disabled={isLoading}
@@ -157,7 +159,7 @@ export default function Login({ initialEmail = '', onLoginSuccess, onNavigateToR
                 type="button"
                 className="input-suffix-btn"
                 onClick={() => setShowPassword(!showPassword)}
-                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                aria-label={t(showPassword ? 'Hide password' : 'Show password')}
                 tabIndex={-1}
               >
                 {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -176,11 +178,11 @@ export default function Login({ initialEmail = '', onLoginSuccess, onNavigateToR
             {isLoading ? (
               <>
                 <span className="spinner-border"></span>
-                <span>Signing in...</span>
+                <span>{t('Signing in...')}</span>
               </>
             ) : (
               <>
-                <span>Sign In</span>
+                <span>{t('Sign In')}</span>
                 <ArrowRight size={16} />
               </>
             )}
@@ -188,21 +190,21 @@ export default function Login({ initialEmail = '', onLoginSuccess, onNavigateToR
 
           {/* Quick Demo Credentials Tip */}
           <div className="demo-credentials-card">
-            <strong>Separate accounts:</strong> Choose the portal matching your account.
+            <strong>{t('Separate accounts:')}</strong> {t('Choose the portal matching your account.')}
             {formData.role === 'authority' && ' Demo Authority uses authority@urbanpulse.com and the server DEMO_AUTHORITY_PASSWORD; SEED_DEMO_ACCOUNTS must be enabled.'}
             {formData.role === 'admin' && ' Admin uses ADMIN_EMAIL (default admin@urbanpulse.com) and DEMO_ADMIN_PASSWORD; admin seeding also requires SEED_DEMO_DATA=true.'}
           </div>
 
           {/* Link to Register */}
           <div className="card-footer-text">
-            <span>Don't have an account yet?</span>
+            <span>{t("Don't have an account yet?")}</span>
             <button
               type="button"
               id="link-goto-register"
               className="link-button"
               onClick={onNavigateToRegister}
             >
-              Create an account
+              {t('Create an account')}
             </button>
           </div>
         </form>

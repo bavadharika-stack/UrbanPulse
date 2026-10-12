@@ -1,15 +1,17 @@
 import React from 'react';
 import {
-  LogIn, UserPlus, LogOut, Menu, Moon, Sun, X, Bell, LayoutDashboard, Map, Star, ClipboardList,
+  LogIn, UserPlus, LogOut, Menu, Moon, Sun, X, Bell, LayoutDashboard, Map, Star, ClipboardList, Languages,
 } from 'lucide-react';
 import { getNotifications, markNotificationRead } from '../api';
+import { useI18n } from '../i18n/I18nProvider';
 
 export default function Header({ currentView, currentUser, onNavigate, onLogout, theme, onToggleTheme }) {
+  const { language, setLanguage, t, formatDate } = useI18n();
   const portalNames = {
-    citizen: 'Citizen Portal',
-    ngo: 'NGO Portal',
-    authority: 'Authority Portal',
-    admin: 'Admin Portal',
+    citizen: t('Citizen Portal'),
+    ngo: t('NGO Portal'),
+    authority: t('Authority Portal'),
+    admin: t('Admin Portal'),
   };
   const userInitials = (currentUser?.fullName || 'UrbanPulse')
     .split(/\s+/)
@@ -17,7 +19,7 @@ export default function Header({ currentView, currentUser, onNavigate, onLogout,
     .slice(0, 2)
     .map((part) => part[0].toUpperCase())
     .join('');
-  const roleLabels = { citizen: 'Citizen', ngo: 'NGO', authority: 'Authority', admin: 'Admin' };
+  const roleLabels = { citizen: t('Citizen'), ngo: t('NGO'), authority: t('Authority'), admin: t('Admin role') };
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [notificationsOpen, setNotificationsOpen] = React.useState(false);
   const [notifications, setNotifications] = React.useState([]);
@@ -52,7 +54,7 @@ export default function Header({ currentView, currentUser, onNavigate, onLogout,
           <img className="brand-icon-image" src="/brand/logo-emblem.png" alt="" aria-hidden="true" />
           <div className="brand-info">
             <span className="brand-name">UrbanPulse</span>
-            <span className="brand-desc">{portalNames[currentUser?.role] || 'Civic Services Portal'}</span>
+            <span className="brand-desc">{portalNames[currentUser?.role] || t('Civic Services Portal')}</span>
           </div>
         </button>
 
@@ -61,7 +63,7 @@ export default function Header({ currentView, currentUser, onNavigate, onLogout,
           <button
             type="button"
             className="icon-button mobile-menu-toggle"
-            aria-label={menuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+            aria-label={t(menuOpen ? 'Close navigation menu' : 'Open navigation menu')}
             aria-expanded={menuOpen}
             aria-controls="primary-navigation"
             onClick={() => setMenuOpen((open) => !open)}
@@ -79,7 +81,7 @@ export default function Header({ currentView, currentUser, onNavigate, onLogout,
                     onClick={() => navigate('dashboard')}
                   >
                     <LayoutDashboard size={17} strokeWidth={1.75} aria-hidden="true" />
-                    <span>Dashboard</span>
+                    <span>{t('Dashboard')}</span>
                   </button>
                   <button
                     type="button"
@@ -87,7 +89,7 @@ export default function Header({ currentView, currentUser, onNavigate, onLogout,
                     onClick={() => navigate('map')}
                   >
                     <Map size={17} strokeWidth={1.75} aria-hidden="true" />
-                    <span>Map</span>
+                    <span>{t('Map')}</span>
                   </button>
                   <button
                     type="button"
@@ -95,39 +97,39 @@ export default function Header({ currentView, currentUser, onNavigate, onLogout,
                     onClick={() => navigate('rate-place')}
                   >
                     <Star size={17} strokeWidth={1.75} aria-hidden="true" />
-                    <span>Rate a Place</span>
+                    <span>{t('Rate a Place')}</span>
                   </button>
                 </div>
               )}
               {currentUser.role === 'admin' && (
                 <div className="nav-links">
                   <button type="button" className={`nav-btn ${currentView === 'admin-dashboard' ? 'nav-btn-active' : ''}`}
-                    onClick={() => navigate('admin-dashboard')}><LayoutDashboard size={17} strokeWidth={1.75} aria-hidden="true" /><span>Admin</span></button>
+                    onClick={() => navigate('admin-dashboard')}><LayoutDashboard size={17} strokeWidth={1.75} aria-hidden="true" /><span>{t('Admin')}</span></button>
                   <button type="button" className={`nav-btn ${currentView === 'impact-report' ? 'nav-btn-active' : ''}`}
-                    onClick={() => navigate('impact-report')}><ClipboardList size={17} strokeWidth={1.75} aria-hidden="true" /><span>Impact Report</span></button>
+                    onClick={() => navigate('impact-report')}><ClipboardList size={17} strokeWidth={1.75} aria-hidden="true" /><span>{t('Impact Report')}</span></button>
                 </div>
               )}
               {currentUser.role === 'ngo' && (
                 <div className="nav-links">
                   <button type="button" className={`nav-btn ${currentView === 'ngo-dashboard' ? 'nav-btn-active' : ''}`}
-                    onClick={() => navigate('ngo-dashboard')}><LayoutDashboard size={17} strokeWidth={1.75} aria-hidden="true" /><span>Dashboard</span></button>
+                    onClick={() => navigate('ngo-dashboard')}><LayoutDashboard size={17} strokeWidth={1.75} aria-hidden="true" /><span>{t('Dashboard')}</span></button>
                   <button type="button" className={`nav-btn ${currentView === 'impact-report' ? 'nav-btn-active' : ''}`}
-                    onClick={() => navigate('impact-report')}><ClipboardList size={17} strokeWidth={1.75} aria-hidden="true" /><span>Impact Report</span></button>
+                    onClick={() => navigate('impact-report')}><ClipboardList size={17} strokeWidth={1.75} aria-hidden="true" /><span>{t('Impact Report')}</span></button>
                 </div>
               )}
               {currentUser.role === 'authority' && (
                 <div className="nav-links">
                   <button type="button" className={`nav-btn ${currentView === 'authority-dashboard' ? 'nav-btn-active' : ''}`}
-                    onClick={() => navigate('authority-dashboard')}><LayoutDashboard size={17} strokeWidth={1.75} aria-hidden="true" /><span>Dashboard</span></button>
+                    onClick={() => navigate('authority-dashboard')}><LayoutDashboard size={17} strokeWidth={1.75} aria-hidden="true" /><span>{t('Dashboard')}</span></button>
                   <button type="button" className={`nav-btn ${currentView === 'impact-report' ? 'nav-btn-active' : ''}`}
-                    onClick={() => navigate('impact-report')}><ClipboardList size={17} strokeWidth={1.75} aria-hidden="true" /><span>Impact Report</span></button>
+                    onClick={() => navigate('impact-report')}><ClipboardList size={17} strokeWidth={1.75} aria-hidden="true" /><span>{t('Impact Report')}</span></button>
                 </div>
               )}
               <span className="user-badge">
                 <span className="user-avatar" aria-hidden="true">{userInitials}</span>
                 <span className="user-badge-copy">
                   <strong>{currentUser.fullName}</strong>
-                  <small>{roleLabels[currentUser.role] || 'User'}</small>
+                  <small>{roleLabels[currentUser.role] || t('User')}</small>
                 </span>
               </span>
               <button
@@ -136,13 +138,13 @@ export default function Header({ currentView, currentUser, onNavigate, onLogout,
                 onClick={() => { onLogout(); setMenuOpen(false); }}
               >
                 <LogOut size={17} strokeWidth={1.75} />
-                <span>Sign Out</span>
+                <span>{t('Sign Out')}</span>
               </button>
               <div className="notification-menu">
                 <button
                   type="button"
                   className="icon-button notification-toggle"
-                  aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ''}`}
+                  aria-label={`${t('Notifications')}${unreadCount ? `, ${unreadCount} ${t('unread')}` : ''}`}
                   aria-expanded={notificationsOpen}
                   onClick={() => { setNotificationsOpen((open) => !open); if (!notificationsOpen) loadNotifications(); }}
                 >
@@ -150,14 +152,14 @@ export default function Header({ currentView, currentUser, onNavigate, onLogout,
                   {unreadCount > 0 && <span className="notification-count">{unreadCount > 99 ? '99+' : unreadCount}</span>}
                 </button>
                 {notificationsOpen && (
-                  <section className="notification-dropdown" aria-label="Notifications">
+                  <section className="notification-dropdown" aria-label={t('Notifications')}>
                     <div className="notification-heading">
-                      <strong>Notifications</strong>
-                      <button type="button" className="link-button" onClick={loadNotifications}>Refresh</button>
+                      <strong>{t('Notifications')}</strong>
+                      <button type="button" className="link-button" onClick={loadNotifications}>{t('Refresh')}</button>
                     </div>
                     {notificationError && <p className="notification-error" role="alert">{notificationError}</p>}
                     {!notifications.length && !notificationError
-                      ? <p className="card-subtitle">You’re all caught up.</p>
+                      ? <p className="card-subtitle">{t('You’re all caught up.')}</p>
                       : notifications.map((item) => (
                         <button
                           type="button"
@@ -176,7 +178,7 @@ export default function Header({ currentView, currentUser, onNavigate, onLogout,
                         >
                           <strong>{item.title}</strong>
                           <span>{item.message}</span>
-                          <time>{new Date(item.createdAt).toLocaleString()}</time>
+                          <time>{formatDate(new Date(item.createdAt), { dateStyle: 'short', timeStyle: 'short' })}</time>
                         </button>
                       ))}
                   </section>
@@ -191,7 +193,7 @@ export default function Header({ currentView, currentUser, onNavigate, onLogout,
                 onClick={() => navigate('login')}
               >
                 <LogIn size={17} strokeWidth={1.75} />
-                <span>Sign In</span>
+                <span>{t('Sign In')}</span>
               </button>
               <button
                 type="button"
@@ -199,19 +201,29 @@ export default function Header({ currentView, currentUser, onNavigate, onLogout,
                 onClick={() => navigate('register')}
               >
                 <UserPlus size={17} strokeWidth={1.75} />
-                <span>Register</span>
+                <span>{t('Register')}</span>
               </button>
             </div>
           )}
           <button
             type="button"
+            className="nav-btn language-toggle"
+            onClick={() => setLanguage(language === 'en' ? 'ta' : 'en')}
+            aria-label={`${t('Switch language')}: ${language === 'en' ? t('Tamil') : t('English')}`}
+            title={t('Switch language')}
+          >
+            <Languages size={18} strokeWidth={1.75} aria-hidden="true" />
+            <span>{language === 'en' ? t('Tamil') : t('English')}</span>
+          </button>
+          <button
+            type="button"
             className="nav-btn theme-toggle"
             onClick={onToggleTheme}
-            aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
-            title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+            aria-label={`${t('Switch to')} ${t(theme === 'dark' ? 'Light theme' : 'Dark theme')}`}
+            title={`${t('Switch to')} ${t(theme === 'dark' ? 'Light theme' : 'Dark theme')}`}
           >
             {theme === 'dark' ? <Sun size={18} strokeWidth={1.75} /> : <Moon size={18} strokeWidth={1.75} />}
-            <span>{theme === 'dark' ? 'Light' : 'Dark'} theme</span>
+            <span>{t(theme === 'dark' ? 'Light theme' : 'Dark theme')}</span>
           </button>
           </div>
         </nav>

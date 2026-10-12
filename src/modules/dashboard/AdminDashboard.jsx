@@ -8,8 +8,10 @@ import {
   updateLocationStatus,
 } from '../../api';
 import { Badge, EmptyState, FormField, Skeleton } from '../../shared/ui';
+import { useI18n } from '../../i18n/I18nProvider';
 
 export default function AdminDashboard({ currentUser }) {
+  const { t } = useI18n();
   const [users, setUsers] = useState([]);
   const [activeAccounts, setActiveAccounts] = useState([]);
   const [locations, setLocations] = useState([]);
@@ -77,9 +79,9 @@ export default function AdminDashboard({ currentUser }) {
       <section className="card dashboard-welcome-card">
         <div className="user-avatar-badge"><ShieldCheck size={24} /></div>
         <div>
-          <div className="user-role-tag">Administration</div>
-          <h2 className="dashboard-title">Admin controls</h2>
-          <p className="dashboard-subtitle">Review NGO applications, manage user accounts and moderate public places.</p>
+          <div className="user-role-tag">{t('Administration')}</div>
+          <h2 className="dashboard-title">{t('Admin controls')}</h2>
+          <p className="dashboard-subtitle">{t('Review NGO applications, manage user accounts and moderate public places.')}</p>
         </div>
       </section>
 
@@ -87,13 +89,13 @@ export default function AdminDashboard({ currentUser }) {
 
       <section className="card mt-3">
         <div className="card-header">
-          <h3 className="card-title">NGO applications and accounts</h3>
-          <p className="card-subtitle">New NGO registrations require admin approval before report actions are available.</p>
+          <h3 className="card-title">{t('NGO applications and accounts')}</h3>
+          <p className="card-subtitle">{t('New NGO registrations require admin approval before report actions are available.')}</p>
         </div>
-        <FormField label="NGO status" htmlFor="admin-ngo-status">
+        <FormField label={t('NGO status')} htmlFor="admin-ngo-status">
           <select id="admin-ngo-status" className="form-control input-no-prefix" value={statusFilter}
             onChange={(event) => setStatusFilter(event.target.value)}>
-            {['pending', 'active', 'rejected', 'deactivated'].map((status) => <option value={status} key={status}>{status}</option>)}
+            {['pending', 'active', 'rejected', 'deactivated'].map((status) => <option value={status} key={status}>{t(status)}</option>)}
           </select>
         </FormField>
         {loading ? <Skeleton lines={3} /> : users.length ? (
@@ -107,30 +109,30 @@ export default function AdminDashboard({ currentUser }) {
                 </div>
                 <div className="dashboard-actions">
                   {['pending', 'rejected'].includes(user.status) && <>
-                    <button type="button" className="btn btn-primary btn-sm" disabled={busy === `user-${user.id}`} onClick={() => setAccountStatus(user, 'active')}>{user.status === 'pending' ? 'Approve' : 'Restore approval'}</button>
-                    <button type="button" className="btn btn-secondary btn-sm" disabled={busy === `user-${user.id}`} onClick={() => setAccountStatus(user, 'rejected')}>Reject</button>
+                    <button type="button" className="btn btn-primary btn-sm" disabled={busy === `user-${user.id}`} onClick={() => setAccountStatus(user, 'active')}>{t(user.status === 'pending' ? 'Approve' : 'Restore approval')}</button>
+                    <button type="button" className="btn btn-secondary btn-sm" disabled={busy === `user-${user.id}`} onClick={() => setAccountStatus(user, 'rejected')}>{t('Reject')}</button>
                   </>}
                   {user.status !== 'deactivated' && user.status !== 'rejected' && (
                     <button type="button" className="btn btn-secondary btn-sm" disabled={busy === `user-${user.id}` || user.id === currentUser?.id}
-                      onClick={() => setAccountStatus(user, 'deactivated')}>Deactivate</button>
+                      onClick={() => setAccountStatus(user, 'deactivated')}>{t('Deactivate')}</button>
                   )}
                 </div>
               </article>
             ))}
           </div>
-        ) : <EmptyState title="No NGOs match this status" />}
+        ) : <EmptyState title={t('No NGOs match this status')} />}
       </section>
 
       <section className="card mt-3">
         <div className="card-header">
-          <h3 className="card-title">Account access</h3>
-          <p className="card-subtitle">Restore deactivated accounts or deactivate accounts that should no longer access the portals.</p>
+          <h3 className="card-title">{t('Account access')}</h3>
+          <p className="card-subtitle">{t('Restore deactivated accounts or deactivate accounts that should no longer access the portals.')}</p>
         </div>
-        <FormField label="Account status" htmlFor="admin-account-status">
+        <FormField label={t('Account status')} htmlFor="admin-account-status">
           <select id="admin-account-status" className="form-control input-no-prefix" value={accountStatusFilter}
             onChange={(event) => setAccountStatusFilter(event.target.value)}>
-            <option value="deactivated">Deactivated</option>
-            <option value="active">Active</option>
+            <option value="deactivated">{t('deactivated')}</option>
+            <option value="active">{t('active')}</option>
           </select>
         </FormField>
         {loading ? <Skeleton lines={3} /> : activeAccounts.length ? (
@@ -145,18 +147,18 @@ export default function AdminDashboard({ currentUser }) {
                   className={`btn ${user.status === 'deactivated' ? 'btn-primary' : 'btn-secondary'} btn-sm`}
                   disabled={busy === `user-${user.id}` || user.id === currentUser?.id}
                   onClick={() => setAccountStatus(user, user.status === 'deactivated' ? 'active' : 'deactivated')}>
-                  {user.status === 'deactivated' ? 'Activate account' : 'Deactivate'}
+                  {t(user.status === 'deactivated' ? 'Activate account' : 'Deactivate')}
                 </button>
               </article>
             ))}
           </div>
-        ) : <EmptyState title="No active accounts" />}
+        ) : <EmptyState title={t('No active accounts')} />}
       </section>
 
       <section className="card mt-3">
         <div className="card-header">
-          <h3 className="card-title">Place moderation</h3>
-          <p className="card-subtitle">Hide or restore a place in public location lists and scores.</p>
+          <h3 className="card-title">{t('Place moderation')}</h3>
+          <p className="card-subtitle">{t('Hide or restore a place in public location lists and scores.')}</p>
         </div>
         {loading ? <Skeleton lines={3} /> : locations.length ? (
           <div className="reports-list">

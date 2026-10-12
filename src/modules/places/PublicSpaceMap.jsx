@@ -9,6 +9,7 @@ import { AlertCircle, RefreshCw } from 'lucide-react';
 import { getIssueDensity, getLocationScores } from '../../api';
 import useUrlFilters from '../../shared/useUrlFilters';
 import { Badge, EmptyState, FormField, Skeleton } from '../../shared/ui';
+import { useI18n } from '../../i18n/I18nProvider';
 
 const DEFAULT_MAP_FILTERS = { place: '' };
 const ScoreTrend = React.lazy(() => import('../../shared/ScoreTrend'));
@@ -35,41 +36,42 @@ const placeIcon = (band) => L.divIcon({
   iconAnchor: [12, 12],
 });
 
-const scoreText = (value) => (value === null ? 'No score yet' : `${Math.round(value)}/100`);
-const confidenceLabel = (place, key) => {
+const scoreText = (value, t) => (value === null ? t('No score yet') : `${Math.round(value)}/100`);
+const confidenceLabel = (place, key, t) => {
   const count = place.scoreCounts?.[key] ?? 0;
   return place.scores[key] === null
-    ? 'No ratings'
-    : `${scoreText(place.scores[key])}, based on ${count} rating${count === 1 ? '' : 's'}`;
+    ? t('No ratings')
+    : `${scoreText(place.scores[key], t)}, ${t(count === 1 ? 'based on {count} rating' : 'based on {count} ratings', { count })}`;
 };
 
 function PlacePopup({ place }) {
+  const { t } = useI18n();
   const [showTrend, setShowTrend] = useState(false);
   return (
     <>
       <strong>{place.name}</strong>
       <Badge tone={place.colorBand ? `score-${place.colorBand}` : 'neutral'} className="map-band-label">
-        {place.colorBand ? `${place.colorBand[0].toUpperCase()}${place.colorBand.slice(1)} score band` : 'No score yet'}
+        {place.colorBand ? t(`${place.colorBand[0].toUpperCase()}${place.colorBand.slice(1)} score band`) : t('No score yet')}
       </Badge>
       {place.isUserAdded === 1 && (
-        <span className="citizen-added-label map-citizen-label">Added by a citizen</span>
+        <span className="citizen-added-label map-citizen-label">{t('Added by a citizen')}</span>
       )}
       <div className="map-popup-scores">
         {SCORE_FIELDS.map(([key, label]) => (
           <div key={key}>
-            <span>{label}</span>
-            <strong>{confidenceLabel(place, key)}</strong>
-            {place.confidence?.[key] === 'low' && <Badge tone="score-yellow" className="rating-confidence">Low confidence</Badge>}
+            <span>{t(label)}</span>
+            <strong>{confidenceLabel(place, key, t)}</strong>
+            {place.confidence?.[key] === 'low' && <Badge tone="score-yellow" className="rating-confidence">{t('Low confidence')}</Badge>}
           </div>
         ))}
       </div>
       <p className="map-popup-overall">
-        Overall: <strong>{confidenceLabel(place, 'overall')}</strong>
-        {place.confidence?.overall === 'low' && <Badge tone="score-yellow" className="rating-confidence">Low confidence</Badge>}
+        {t('Overall')}: <strong>{confidenceLabel(place, 'overall', t)}</strong>
+        {place.confidence?.overall === 'low' && <Badge tone="score-yellow" className="rating-confidence">{t('Low confidence')}</Badge>}
       </p>
-      <p className="map-popup-issues">{place.openReportCount} open issue{place.openReportCount === 1 ? '' : 's'} here</p>
+      <p className="map-popup-issues">{t(place.openReportCount === 1 ? '{count} open issue here' : '{count} open issues here', { count: place.openReportCount })}</p>
       <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowTrend((open) => !open)}>
-        {showTrend ? 'Hide trend' : 'View trend'}
+        {t(showTrend ? 'Hide trend' : 'View trend')}
       </button>
       {showTrend && (
         <Suspense fallback={<Skeleton lines={3} />}>
@@ -81,6 +83,7 @@ function PlacePopup({ place }) {
 }
 
 export default function PublicSpaceMap() {
+  const { t } = useI18n();
   const [scores, setScores] = useState([]);
   const [densityPoints, setDensityPoints] = useState([]);
   const [layer, setLayer] = useState('markers');
@@ -115,37 +118,37 @@ export default function PublicSpaceMap() {
       <div className="card">
         <div className="map-heading">
           <div>
-            <div className="user-role-tag">Chennai public spaces</div>
-            <h2 className="dashboard-title">Place Scores Map</h2>
-            <p className="dashboard-subtitle">Explore community ratings for accessibility, walkability, safety, cleanliness, and heat comfort.</p>
+            <div className="user-role-tag">{t('Chennai public spaces')}</div>
+            <h2 className="dashboard-title">{t('Place Scores Map')}</h2>
+            <p className="dashboard-subtitle">{t('Explore community ratings for accessibility, walkability, safety, cleanliness, and heat comfort.')}</p>
           </div>
           <button type="button" className="btn btn-secondary btn-sm" onClick={loadScores} disabled={isLoading}>
-            <RefreshCw size={15} /><span>Refresh</span>
+            <RefreshCw size={15} /><span>{t('Refresh')}</span>
           </button>
         </div>
 
-        <div className="map-legend" aria-label="Score color bands">
-          <span><i className="legend-dot" style={{ background: BAND_COLORS.red }} /> Red · Below 50</span>
-          <span><i className="legend-dot" style={{ background: BAND_COLORS.yellow }} /> Yellow · 50–74</span>
-          <span><i className="legend-dot" style={{ background: BAND_COLORS.green }} /> Green · 75 and above</span>
+        <div className="map-legend" aria-label={t('Score color bands')}>
+          <span><i className="legend-dot" style={{ background: BAND_COLORS.red }} /> {t('Red · Below 50')}</span>
+          <span><i className="legend-dot" style={{ background: BAND_COLORS.yellow }} /> {t('Yellow · 50–74')}</span>
+          <span><i className="legend-dot" style={{ background: BAND_COLORS.green }} /> {t('Green · 75 and above')}</span>
         </div>
-        <div className="map-layer-switch" role="group" aria-label="Map layer">
+        <div className="map-layer-switch" role="group" aria-label={t('Map layer')}>
           <button type="button" className={`btn btn-sm ${layer === 'markers' ? 'btn-primary' : 'btn-secondary'}`}
-            aria-pressed={layer === 'markers'} onClick={() => setLayer('markers')}>Markers</button>
+            aria-pressed={layer === 'markers'} onClick={() => setLayer('markers')}>{t('Markers')}</button>
           <button type="button" className={`btn btn-sm ${layer === 'density' ? 'btn-primary' : 'btn-secondary'}`}
-            aria-pressed={layer === 'density'} onClick={() => setLayer('density')}>Problem density</button>
+            aria-pressed={layer === 'density'} onClick={() => setLayer('density')}>{t('Problem density')}</button>
         </div>
         {layer === 'density' && (
           <div className="density-legend" aria-label="Problem density legend">
-            <strong>Open issue density</strong>
-            <span><i className="density-dot density-low" /> Low priority</span>
-            <span><i className="density-dot density-high" /> Critical priority</span>
-            <small>Verified issues receive extra weight; flagged reports are excluded.</small>
+            <strong>{t('Open issue density')}</strong>
+            <span><i className="density-dot density-low" /> {t('Low priority')}</span>
+            <span><i className="density-dot density-high" /> {t('Critical priority')}</span>
+            <small>{t('Verified issues receive extra weight; flagged reports are excluded.')}</small>
           </div>
         )}
-        <FormField label="Search places" htmlFor="map-place-search" className="map-search">
+        <FormField label={t('Search places')} htmlFor="map-place-search" className="map-search">
           <input id="map-place-search" className="form-control input-no-prefix" type="search" maxLength={120}
-            value={filters.place} placeholder="Search by place or address"
+            value={filters.place} placeholder={t('Search by place or address')}
             onChange={(event) => setFilters({ place: event.target.value })} />
         </FormField>
 
@@ -192,13 +195,16 @@ export default function PublicSpaceMap() {
                 }}
               >
                 <Tooltip>
-                  {point.priority} priority · {point.verified ? 'verified' : 'unverified'} open issue
+                  {t('{priority} priority · {verification} open issue', {
+                    priority: t(point.priority),
+                    verification: t(point.verified ? 'verified' : 'unverified'),
+                  })}
                 </Tooltip>
               </CircleMarker>
             ))}
           </MapContainer>
         ) : (
-          <EmptyState title="No matching mapped places" description="Try another search term or clear the search." />
+          <EmptyState title={t('No matching mapped places')} description={t('Try another search term or clear the search.')} />
         )}
       </div>
     </div>
