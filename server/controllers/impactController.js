@@ -1,4 +1,5 @@
 const PDFDocument = require('pdfkit');
+const path = require('node:path');
 const { z } = require('zod');
 const impactRepository = require('../db/impact');
 
@@ -73,7 +74,10 @@ exports.downloadImpactPdf = (req, res, next) => {
       `attachment; filename="urbanpulse-impact-${impact.month}.pdf"`,
     );
     doc.pipe(res);
-    doc.fontSize(20).fillColor('#075985').text('UrbanPulse Monthly Impact Report');
+    const logoPath = path.join(__dirname, '..', '..', 'public', 'brand', 'logo-full.png');
+    doc.image(logoPath, 48, 38, { fit: [230, 72], align: 'left', valign: 'center' });
+    doc.y = 124;
+    doc.fontSize(20).fillColor('#153a43').text('Monthly Impact Report');
     doc.moveDown(0.5);
     doc.fontSize(12).fillColor('#0f172a').text(`NGO: ${impact.ngoName}`);
     doc.text(`Date range: ${impact.dateRange.start} to ${impact.dateRange.end}`);

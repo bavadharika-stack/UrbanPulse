@@ -12,6 +12,7 @@ import RatePlace from './modules/places/RatePlace';
 import PublicSpaceMap from './modules/places/PublicSpaceMap';
 import AdminDashboard from './modules/dashboard/AdminDashboard';
 import ImpactReport from './modules/dashboard/ImpactReport';
+import AuthLayout from './shared/AuthLayout';
 import { getCurrentUser, logoutUser } from './api';
 import { ToastProvider } from './shared/ui';
 
@@ -20,6 +21,7 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [prefilledEmail, setPrefilledEmail] = useState('');
   const [sessionError, setSessionError] = useState('');
+  const [checkingSession, setCheckingSession] = useState(true);
   const [theme, setTheme] = useState(() => {
     try {
       return localStorage.getItem('urbanpulse_theme') === 'dark' ? 'dark' : 'light';
@@ -55,6 +57,9 @@ export default function App() {
       })
       .catch((error) => {
         if (active) setSessionError(error.message);
+      })
+      .finally(() => {
+        if (active) setCheckingSession(false);
       });
     return () => { active = false; };
   }, []);
@@ -124,8 +129,16 @@ export default function App() {
       />
 
       {/* Main Page Body */}
-      <main className="main-wrapper">
+      <main className="main-wrapper" id="main-content" data-role={currentUser?.role || 'guest'} data-view={currentView}>
         <div style={{ width: '100%' }}>
+          {checkingSession && (
+            <div className="app-loading" role="status" aria-label="Loading UrbanPulse">
+              <img src="/brand/logo-emblem.png" alt="" />
+              <span>Loading UrbanPulse</span>
+            </div>
+          )}
+          {!checkingSession && (
+            <>
           {sessionError && (
             <div className="alert alert-error" role="alert">
               <AlertCircle size={18} className="alert-icon" />
@@ -134,15 +147,17 @@ export default function App() {
           )}
 
           {currentView === 'register' && (
-            <Registration onNavigateToLogin={handleNavigateToLogin} />
+            <AuthLayout><Registration onNavigateToLogin={handleNavigateToLogin} /></AuthLayout>
           )}
 
           {currentView === 'login' && (
-            <Login
-              initialEmail={prefilledEmail}
-              onLoginSuccess={handleLoginSuccess}
-              onNavigateToRegister={handleNavigateToRegister}
-            />
+            <AuthLayout>
+              <Login
+                initialEmail={prefilledEmail}
+                onLoginSuccess={handleLoginSuccess}
+                onNavigateToRegister={handleNavigateToRegister}
+              />
+            </AuthLayout>
           )}
 
           {currentView === 'ngo-dashboard' && (
@@ -195,6 +210,8 @@ export default function App() {
 
           {currentView === 'map' && currentUser?.role === 'citizen' && (
             <PublicSpaceMap />
+          )}
+            </>
           )}
         </div>
       </main>

@@ -94,6 +94,7 @@ export function useToast() {
 export function EmptyState({ title, description, action }) {
   return (
     <div className="empty-state">
+      <img className="empty-state-emblem" src="/brand/logo-emblem.png" alt="" aria-hidden="true" />
       <Info size={22} aria-hidden="true" />
       <strong>{title}</strong>
       {description && <p>{description}</p>}

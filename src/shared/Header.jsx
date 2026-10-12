@@ -1,5 +1,7 @@
 import React from 'react';
-import { Activity, LogIn, UserPlus, LogOut, User, Menu, Moon, Sun, X, Bell } from 'lucide-react';
+import {
+  LogIn, UserPlus, LogOut, Menu, Moon, Sun, X, Bell, LayoutDashboard, Map, Star, ClipboardList,
+} from 'lucide-react';
 import { getNotifications, markNotificationRead } from '../api';
 
 export default function Header({ currentView, currentUser, onNavigate, onLogout, theme, onToggleTheme }) {
@@ -9,6 +11,13 @@ export default function Header({ currentView, currentUser, onNavigate, onLogout,
     authority: 'Authority Portal',
     admin: 'Admin Portal',
   };
+  const userInitials = (currentUser?.fullName || 'UrbanPulse')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0].toUpperCase())
+    .join('');
+  const roleLabels = { citizen: 'Citizen', ngo: 'NGO', authority: 'Authority', admin: 'Admin' };
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [notificationsOpen, setNotificationsOpen] = React.useState(false);
   const [notifications, setNotifications] = React.useState([]);
@@ -36,13 +45,11 @@ export default function Header({ currentView, currentUser, onNavigate, onLogout,
     setMenuOpen(false);
   };
   return (
-    <header className="site-header">
+    <header className="site-header" data-role={currentUser?.role || 'guest'}>
       <div className="header-container">
         {/* Brand Logo & Name */}
         <button type="button" className="brand brand-button" onClick={() => navigate(currentUser ? 'dashboard' : 'login')}>
-          <div className="brand-icon">
-            <Activity size={20} />
-          </div>
+          <img className="brand-icon-image" src="/brand/logo-emblem.png" alt="" aria-hidden="true" />
           <div className="brand-info">
             <span className="brand-name">UrbanPulse</span>
             <span className="brand-desc">{portalNames[currentUser?.role] || 'Civic Services Portal'}</span>
@@ -71,6 +78,7 @@ export default function Header({ currentView, currentUser, onNavigate, onLogout,
                     className={`nav-btn ${currentView === 'dashboard' ? 'nav-btn-active' : ''}`}
                     onClick={() => navigate('dashboard')}
                   >
+                    <LayoutDashboard size={17} strokeWidth={1.75} aria-hidden="true" />
                     <span>Dashboard</span>
                   </button>
                   <button
@@ -78,6 +86,7 @@ export default function Header({ currentView, currentUser, onNavigate, onLogout,
                     className={`nav-btn ${currentView === 'map' ? 'nav-btn-active' : ''}`}
                     onClick={() => navigate('map')}
                   >
+                    <Map size={17} strokeWidth={1.75} aria-hidden="true" />
                     <span>Map</span>
                   </button>
                   <button
@@ -85,6 +94,7 @@ export default function Header({ currentView, currentUser, onNavigate, onLogout,
                     className={`nav-btn ${currentView === 'rate-place' ? 'nav-btn-active' : ''}`}
                     onClick={() => navigate('rate-place')}
                   >
+                    <Star size={17} strokeWidth={1.75} aria-hidden="true" />
                     <span>Rate a Place</span>
                   </button>
                 </div>
@@ -92,37 +102,40 @@ export default function Header({ currentView, currentUser, onNavigate, onLogout,
               {currentUser.role === 'admin' && (
                 <div className="nav-links">
                   <button type="button" className={`nav-btn ${currentView === 'admin-dashboard' ? 'nav-btn-active' : ''}`}
-                    onClick={() => navigate('admin-dashboard')}><span>Admin</span></button>
+                    onClick={() => navigate('admin-dashboard')}><LayoutDashboard size={17} strokeWidth={1.75} aria-hidden="true" /><span>Admin</span></button>
                   <button type="button" className={`nav-btn ${currentView === 'impact-report' ? 'nav-btn-active' : ''}`}
-                    onClick={() => navigate('impact-report')}><span>Impact Report</span></button>
+                    onClick={() => navigate('impact-report')}><ClipboardList size={17} strokeWidth={1.75} aria-hidden="true" /><span>Impact Report</span></button>
                 </div>
               )}
               {currentUser.role === 'ngo' && (
                 <div className="nav-links">
                   <button type="button" className={`nav-btn ${currentView === 'ngo-dashboard' ? 'nav-btn-active' : ''}`}
-                    onClick={() => navigate('ngo-dashboard')}><span>Dashboard</span></button>
+                    onClick={() => navigate('ngo-dashboard')}><LayoutDashboard size={17} strokeWidth={1.75} aria-hidden="true" /><span>Dashboard</span></button>
                   <button type="button" className={`nav-btn ${currentView === 'impact-report' ? 'nav-btn-active' : ''}`}
-                    onClick={() => navigate('impact-report')}><span>Impact Report</span></button>
+                    onClick={() => navigate('impact-report')}><ClipboardList size={17} strokeWidth={1.75} aria-hidden="true" /><span>Impact Report</span></button>
                 </div>
               )}
               {currentUser.role === 'authority' && (
                 <div className="nav-links">
                   <button type="button" className={`nav-btn ${currentView === 'authority-dashboard' ? 'nav-btn-active' : ''}`}
-                    onClick={() => navigate('authority-dashboard')}><span>Dashboard</span></button>
+                    onClick={() => navigate('authority-dashboard')}><LayoutDashboard size={17} strokeWidth={1.75} aria-hidden="true" /><span>Dashboard</span></button>
                   <button type="button" className={`nav-btn ${currentView === 'impact-report' ? 'nav-btn-active' : ''}`}
-                    onClick={() => navigate('impact-report')}><span>Impact Report</span></button>
+                    onClick={() => navigate('impact-report')}><ClipboardList size={17} strokeWidth={1.75} aria-hidden="true" /><span>Impact Report</span></button>
                 </div>
               )}
               <span className="user-badge">
-                <User size={14} />
-                <span>{currentUser.fullName}</span>
+                <span className="user-avatar" aria-hidden="true">{userInitials}</span>
+                <span className="user-badge-copy">
+                  <strong>{currentUser.fullName}</strong>
+                  <small>{roleLabels[currentUser.role] || 'User'}</small>
+                </span>
               </span>
               <button
                 type="button"
                 className="nav-btn nav-btn-outline"
                 onClick={() => { onLogout(); setMenuOpen(false); }}
               >
-                <LogOut size={14} />
+                <LogOut size={17} strokeWidth={1.75} />
                 <span>Sign Out</span>
               </button>
               <div className="notification-menu">
@@ -133,7 +146,7 @@ export default function Header({ currentView, currentUser, onNavigate, onLogout,
                   aria-expanded={notificationsOpen}
                   onClick={() => { setNotificationsOpen((open) => !open); if (!notificationsOpen) loadNotifications(); }}
                 >
-                  <Bell size={18} />
+                  <Bell size={19} strokeWidth={1.75} />
                   {unreadCount > 0 && <span className="notification-count">{unreadCount > 99 ? '99+' : unreadCount}</span>}
                 </button>
                 {notificationsOpen && (
@@ -177,7 +190,7 @@ export default function Header({ currentView, currentUser, onNavigate, onLogout,
                 className={`nav-btn ${currentView === 'login' ? 'nav-btn-active' : ''}`}
                 onClick={() => navigate('login')}
               >
-                <LogIn size={14} />
+                <LogIn size={17} strokeWidth={1.75} />
                 <span>Sign In</span>
               </button>
               <button
@@ -185,7 +198,7 @@ export default function Header({ currentView, currentUser, onNavigate, onLogout,
                 className={`nav-btn ${currentView === 'register' ? 'nav-btn-active' : ''}`}
                 onClick={() => navigate('register')}
               >
-                <UserPlus size={14} />
+                <UserPlus size={17} strokeWidth={1.75} />
                 <span>Register</span>
               </button>
             </div>
@@ -197,7 +210,7 @@ export default function Header({ currentView, currentUser, onNavigate, onLogout,
             aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
             title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
           >
-            {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+            {theme === 'dark' ? <Sun size={18} strokeWidth={1.75} /> : <Moon size={18} strokeWidth={1.75} />}
             <span>{theme === 'dark' ? 'Light' : 'Dark'} theme</span>
           </button>
           </div>
